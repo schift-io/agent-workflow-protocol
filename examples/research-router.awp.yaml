@@ -1,0 +1,171 @@
+schema: agent-workflow-protocol
+version: "0.1"
+id: research-router
+name: Research router
+description: Route a question to memory and code specialists, then synthesize an audited answer.
+
+inputs:
+  query:
+    type: string
+    required: true
+    description: User question.
+
+outputs:
+  answer:
+    type: string
+    required: true
+    description: Final evidence-grounded answer.
+
+state:
+  query: string
+  memory_findings: array
+  code_findings: array
+  answer: string
+
+agents:
+  root:
+    role: coordinator
+    model:
+      provider: openai
+      name: gpt-4.1-mini
+    instructions: Route work to specialists and synthesize the final answer with evidence.
+    children: [memory_researcher, code_analyst]
+    max_steps: 8
+  memory_researcher:
+    role: researcher
+    instructions: Search connected Schift memory sources and summarize relevant findings.
+    tools: [memory.search]
+  code_analyst:
+    role: analyst
+    instructions: Search source code and return file-level evidence.
+    tools: [code.search]
+
+tools:
+  memory.search:
+    kind: schift.memory.search
+    description: Search connected Schift memory sources.
+    schema_format: json_schema
+    strict: true
+    side_effect: read
+    idempotent: true
+    runtime: schift
+    execution:
+      mode: server
+      binding: schift.memory.search
+      timeout_ms: 10000
+    approval:
+      mode: none
+    input_schema:
+      type: object
+      required: [query]
+      properties:
+        query:
+          type: string
+  code.search:
+    kind: local.code.search
+    description: Search project source code.
+    schema_format: json_schema
+    strict: true
+    side_effect: read
+    idempotent: true
+    runtime: local
+    execution:
+      mode: host
+      binding: code.search
+      timeout_ms: 5000
+    approval:
+      mode: none
+    input_schema:
+      type: object
+      required: [query]
+      properties:
+        query:
+          type: string
+
+tool_calling:
+  default_choice:
+    mode: auto
+    allowed_tools:
+      - memory.search
+      - code.search
+  parallelism:
+    enabled: true
+    max_concurrent: 4
+    return_results_together: true
+  require_results_for_all_calls: true
+  mint_protocol_call_id: true
+
+native:
+  token_counter:
+    required: true
+    fields:
+      - prompt_tokens
+      - completion_tokens
+      - reasoning_tokens
+      - cached_tokens
+      - tool_call_tokens
+      - total_tokens
+  logging:
+    level: info
+    events:
+      - run.started
+      - step.started
+      - tool.started
+      - tool.completed
+      - audit.requested
+      - audit.decided
+      - step.completed
+      - run.completed
+      - run.failed
+  audit:
+    checkpoints:
+      - id: before_final_answer
+        type: pre_response
+        required: true
+      - id: tool_result_integrity
+        type: post_tool
+        required: true
+
+graph:
+  start: route
+  nodes:
+    route:
+      type: agent
+      ref: root
+    memory:
+      type: agent
+      ref: memory_researcher
+    code:
+      type: agent
+      ref: code_analyst
+    audit_findings:
+      type: human_approval
+      label: Review intermediate findings
+    synthesize:
+      type: agent
+      ref: root
+    done:
+      type: end
+  edges:
+    - from: route
+      to: memory
+    - from: route
+      to: code
+    - from: memory
+      to: audit_findings
+    - from: code
+      to: audit_findings
+    - from: audit_findings
+      to: synthesize
+    - from: synthesize
+      to: done
+
+adapters:
+  langgraph:
+    compile_to: StateGraph
+    checkpointer: required
+  vercel_ai_sdk:
+    compile_to: generateText
+    max_steps: 8
+  schift:
+    compile_to: managed_agent_run

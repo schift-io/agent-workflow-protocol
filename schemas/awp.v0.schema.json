@@ -1,0 +1,259 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.schift.io/awp/v0.1.json",
+  "title": "Agent Workflow Protocol v0.1",
+  "type": "object",
+  "required": ["schema", "version", "id", "name", "agents", "graph"],
+  "properties": {
+    "schema": { "const": "agent-workflow-protocol" },
+    "version": { "const": "0.1" },
+    "id": { "type": "string", "minLength": 1 },
+    "name": { "type": "string", "minLength": 1 },
+    "description": { "type": "string" },
+    "inputs": { "$ref": "#/$defs/fields" },
+    "outputs": { "$ref": "#/$defs/fields" },
+    "state": {
+      "type": "object",
+      "additionalProperties": {
+        "anyOf": [
+          { "$ref": "#/$defs/scalarType" },
+          { "$ref": "#/$defs/field" }
+        ]
+      }
+    },
+    "agents": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": { "$ref": "#/$defs/agent" }
+    },
+    "tools": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/tool" }
+    },
+    "connectors": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/connector" }
+    },
+    "tool_calling": { "$ref": "#/$defs/toolCalling" },
+    "native": { "$ref": "#/$defs/native" },
+    "graph": { "$ref": "#/$defs/graph" },
+    "adapters": {
+      "type": "object",
+      "additionalProperties": { "type": "object" }
+    },
+    "metadata": { "type": "object" }
+  },
+  "$defs": {
+    "scalarType": {
+      "enum": ["string", "number", "integer", "boolean", "object", "array"]
+    },
+    "field": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": { "$ref": "#/$defs/scalarType" },
+        "required": { "type": "boolean" },
+        "description": { "type": "string" },
+        "default": true
+      },
+      "additionalProperties": true
+    },
+    "fields": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/field" }
+    },
+    "model": {
+      "type": "object",
+      "required": ["provider", "name"],
+      "properties": {
+        "provider": { "type": "string" },
+        "name": { "type": "string" },
+        "temperature": { "type": "number" },
+        "max_output_tokens": { "type": "integer" }
+      },
+      "additionalProperties": true
+    },
+    "agent": {
+      "type": "object",
+      "required": ["role"],
+      "properties": {
+        "role": { "type": "string" },
+        "model": { "$ref": "#/$defs/model" },
+        "instructions": { "type": "string" },
+        "tools": { "type": "array", "items": { "type": "string" } },
+        "connectors": { "type": "array", "items": { "type": "string" } },
+        "children": { "type": "array", "items": { "type": "string" } },
+        "max_steps": { "type": "integer" },
+        "tool_choice": { "$ref": "#/$defs/toolChoice" },
+        "tool_parallelism": { "$ref": "#/$defs/toolParallelism" },
+        "metadata": { "type": "object" }
+      },
+      "additionalProperties": true
+    },
+    "tool": {
+      "type": "object",
+      "required": ["kind", "description"],
+      "properties": {
+        "kind": { "type": "string" },
+        "description": { "type": "string" },
+        "schema_format": {
+          "enum": ["json_schema", "openapi_schema", "zod_adapter", "mcp_tool"]
+        },
+        "input_schema": { "type": "object" },
+        "output_schema": { "type": "object" },
+        "runtime": { "enum": ["local", "schift", "mcp", "http", "adapter"] },
+        "execution": {
+          "type": "object",
+          "required": ["mode"],
+          "properties": {
+            "mode": {
+              "enum": ["host", "client", "server", "mcp", "remote", "manual", "adapter"]
+            },
+            "binding": { "type": "string" },
+            "timeout_ms": { "type": "integer" }
+          },
+          "additionalProperties": true
+        },
+        "approval": {
+          "type": "object",
+          "required": ["mode"],
+          "properties": {
+            "mode": { "enum": ["none", "always", "conditional", "runtime"] },
+            "checkpoint": { "type": "string" },
+            "condition": { "type": "string" }
+          },
+          "additionalProperties": true
+        },
+        "strict": { "type": "boolean" },
+        "idempotent": { "type": "boolean" },
+        "side_effect": { "enum": ["none", "read", "write", "external"] },
+        "metadata": { "type": "object" }
+      },
+      "additionalProperties": true
+    },
+    "toolChoice": {
+      "type": "object",
+      "required": ["mode"],
+      "properties": {
+        "mode": { "enum": ["auto", "none", "required", "any", "tool", "validated"] },
+        "tool": { "type": "string" },
+        "allowed_tools": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": true
+    },
+    "toolParallelism": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "max_concurrent": { "type": "integer" },
+        "return_results_together": { "type": "boolean" }
+      },
+      "additionalProperties": true
+    },
+    "connector": {
+      "type": "object",
+      "required": ["kind", "source"],
+      "properties": {
+        "kind": { "type": "string" },
+        "source": { "type": "string" },
+        "mode": { "enum": ["read", "write", "read_write"] },
+        "scopes": { "type": "array", "items": { "type": "string" } },
+        "config": { "type": "object" }
+      },
+      "additionalProperties": true
+    },
+    "native": {
+      "type": "object",
+      "properties": {
+        "token_counter": {
+          "type": "object",
+          "properties": {
+            "required": { "type": "boolean" },
+            "fields": { "type": "array", "items": { "type": "string" } }
+          },
+          "additionalProperties": true
+        },
+        "logging": {
+          "type": "object",
+          "properties": {
+            "level": { "enum": ["debug", "info", "warn", "error"] },
+            "events": { "type": "array", "items": { "type": "string" } }
+          },
+          "additionalProperties": true
+        },
+        "audit": {
+          "type": "object",
+          "properties": {
+            "checkpoints": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["id", "type"],
+                "properties": {
+                  "id": { "type": "string" },
+                  "type": { "type": "string" },
+                  "required": { "type": "boolean" }
+                },
+                "additionalProperties": true
+              }
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "toolCalling": {
+      "type": "object",
+      "properties": {
+        "default_choice": { "$ref": "#/$defs/toolChoice" },
+        "parallelism": { "$ref": "#/$defs/toolParallelism" },
+        "require_results_for_all_calls": { "type": "boolean" },
+        "mint_protocol_call_id": { "type": "boolean" }
+      },
+      "additionalProperties": true
+    },
+    "node": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "enum": ["agent", "tool", "connector", "router", "join", "state", "human_approval", "subworkflow", "end"]
+        },
+        "ref": { "type": "string" },
+        "label": { "type": "string" },
+        "config": { "type": "object" }
+      },
+      "additionalProperties": true
+    },
+    "edge": {
+      "type": "object",
+      "required": ["from", "to"],
+      "properties": {
+        "from": { "type": "string" },
+        "to": { "type": "string" },
+        "condition": { "type": "string" },
+        "label": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "graph": {
+      "type": "object",
+      "required": ["start", "nodes", "edges"],
+      "properties": {
+        "start": { "type": "string" },
+        "nodes": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "$ref": "#/$defs/node" }
+        },
+        "edges": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/edge" }
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}
