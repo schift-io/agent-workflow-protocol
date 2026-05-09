@@ -1,101 +1,150 @@
 # Agent Workflow Protocol
 
-Agent Workflow Protocol, or AWP, is a YAML-first protocol for portable agent
-workflows. AWP describes agents, tools, connectors, state, graph topology, and
-native run evidence once, then lets adapters compile the same template into
-runtime-specific SDKs.
+**AWP** is a YAML-first protocol for portable agent workflows.
 
-AWP is maintained as a standalone repository inside the Schift workspace because
-Schift API, UI, SDKs, and external adapters all need the same contract.
-
-## Goals
-
-- One official YAML shape for agent workflow templates.
-- Framework-neutral core: the protocol does not depend on LangGraph, Vercel AI
-  SDK, or the Schift hosted workflow engine.
-- Adapter-friendly targets for LangGraph, Vercel AI SDK, and Schift.
-- Native support for token counting, structured logging, and intermediate audit
-  checkpoints.
-
-## File Extension
-
-Use `.awp.yaml`.
-
-```yaml
-schema: agent-workflow-protocol
-version: "0.1"
-id: support-triage
-name: Support triage
-```
-
-## Supported SDK Targets
-
-| SDK / runtime | Status | Support | Adapter target |
-| --- | --- | --- | --- |
-| Schift API and UI | Native target | Full workflow | Managed agents, hosted workflow definitions, dashboard builder state |
-| LangGraph Python / JS | Planned adapter | Full workflow | `StateGraph`, nodes, edges, conditional routing, subgraphs, checkpointers |
-| Vercel AI SDK | Planned adapter | Full workflow | `generateText` / `streamText`, `tool(...)`, bounded `stopWhen` loops |
-| OpenAI Responses / Agents SDK | Planned adapter | Tool surface | Function tools, built-in tools, MCP tools, approval around host execution |
-| Anthropic Messages | Planned adapter | Tool surface | Claude tools and `tool_result` blocks |
-| Gemini Function Calling | Planned adapter | Tool surface | Function declarations and response parts |
-| MCP tools | Planned adapter | Connector surface | MCP tool list/call contracts |
-
-The protocol exposes these as machine-readable metadata via
-`SUPPORTED_SDK_TARGETS`.
-
-## Native Support
-
-AWP templates can declare the evidence a runtime must emit:
-
-- Token counters: prompt, completion, cached, reasoning, and tool-call tokens.
-- Structured run logs: run, step, model, tool, connector, and state events.
-- Audit checkpoints: pre-tool, post-tool, pre-response, human approval, and
-  policy decision events.
-
-This is part of the protocol because logs and audit evidence should survive SDK
-swaps. A LangGraph run and a Vercel AI SDK run should be comparable at the AWP
-event layer.
-
-## Tool Calling
-
-AWP standardizes tool declarations, tool-choice policy, tool-call ids, approval,
-parallel calls, streaming deltas, results, errors, and token/audit metadata.
-
-The important rule: every adapter must mint a `protocol_call_id` for each tool
-call, even when the provider already returns its own call id. Provider ids are
-preserved as metadata, but AWP events and audit logs correlate on
-`protocol_call_id`.
-
-See [docs/tool-calling.md](./docs/tool-calling.md).
-
-## Example
+Write an agent workflow once as `.awp.yaml`, then compile it into runtime-specific
+targets such as Schift, LangGraph, Vercel AI SDK, OpenAI Responses/Agents,
+Anthropic Messages, Gemini Function Calling, or MCP tool surfaces.
 
 ```yaml
 schema: agent-workflow-protocol
 version: "0.1"
 id: research-router
 name: Research router
+```
+
+## Status
+
+AWP v0.1 is a draft contract.
+
+Compatibility has been checked at the **protocol and documentation level** against
+the official SDK/runtime surfaces listed below. Runtime adapters are not shipped
+yet, so this repo currently proves the shared YAML shape, schema, parser,
+validator, supported-target metadata, and SDK mapping rules.
+
+| Area | Status |
+| --- | --- |
+| YAML schema | Implemented |
+| TypeScript contract types | Implemented |
+| Parser / serializer | Implemented |
+| Structural validation | Implemented |
+| Tool-calling normalization spec | Implemented |
+| Native token/log/audit evidence spec | Implemented |
+| Runtime adapters | Planned |
+
+## Why AWP Exists
+
+Agent frameworks all describe similar ideas with different shapes:
+
+- agents and roles
+- model settings
+- tools and function calling
+- connectors and external context
+- graph topology or step loops
+- approval and human review
+- token accounting, logging, and audit traces
+
+AWP makes those concepts explicit in one neutral contract. The protocol is the
+source of truth; SDK adapters are compilation targets.
+
+## Compatibility Matrix
+
+| Target | Support level | Contract status | Adapter target |
+| --- | --- | --- | --- |
+| Schift API and UI | Full workflow | Native target | Managed agents, hosted workflows, dashboard builder state |
+| LangGraph Python | Full workflow | Mapped | `StateGraph`, nodes, edges, conditional routing, subgraphs, checkpointers |
+| LangGraph JS | Full workflow | Mapped | `StateGraph`, stream/custom events, persistence, interrupts |
+| Vercel AI SDK | Full workflow | Mapped | `generateText`, `streamText`, `tool(...)`, bounded step loops |
+| OpenAI Responses / Agents SDK | Tool surface | Mapped | Function tools, built-in tools, MCP tools, host-side approval |
+| Anthropic Messages | Tool surface | Mapped | Claude tools, `tool_use`, `tool_result`, streaming content blocks |
+| Gemini Function Calling | Tool surface | Mapped | Function declarations, function response parts, safety and usage metadata |
+| MCP tools | Connector surface | Mapped | MCP tool list/call schema and server capability surfaces |
+
+Machine-readable target metadata is exported as `SUPPORTED_SDK_TARGETS`.
+
+## Core Guarantees
+
+### YAML Is Canonical
+
+AWP templates are authored as `.awp.yaml`. Generated JSON or SDK objects are
+adapter outputs, not the canonical source.
+
+### Tool Calls Have Stable IDs
+
+Every tool call gets an AWP-owned `protocol_call_id`.
+
+Provider ids are preserved as metadata:
+
+- OpenAI `call_id`
+- Anthropic `tool_use.id`
+- Gemini response/function metadata
+- LangGraph or Vercel runtime ids
+
+The AWP id is the audit and correlation key across all targets.
+
+### Native Evidence Is Part Of The Protocol
+
+AWP does not treat observability as an afterthought. Templates can require:
+
+- token counters
+- structured run logs
+- tool-call records
+- streaming deltas
+- approval events
+- intermediate audit checkpoints
+
+This lets Schift, LangGraph, and Vercel AI SDK runs produce comparable evidence.
+
+## Quick Start
+
+```bash
+npm install
+npm test
+```
+
+```ts
+import {
+  parseAwpYaml,
+  stringifyAwpYaml,
+  validateAwpTemplate,
+  SUPPORTED_SDK_TARGETS,
+} from "@schift-io/agent-workflow-protocol";
+```
+
+```ts
+const template = parseAwpYaml(source);
+const result = validateAwpTemplate(template);
+
+if (!result.valid) {
+  console.error(result.diagnostics);
+}
+```
+
+## Minimal Template
+
+```yaml
+schema: agent-workflow-protocol
+version: "0.1"
+id: support-triage
+name: Support triage
 
 inputs:
-  query:
+  ticket:
     type: string
     required: true
 
 state:
-  query: string
-  findings: array
+  ticket: string
   answer: string
 
 agents:
-  root:
-    role: coordinator
+  triage:
+    role: support-triage
     model:
       provider: openai
       name: gpt-4.1-mini
-    children: [researcher]
-  researcher:
-    role: researcher
     tools: [memory.search]
+    max_steps: 6
 
 tools:
   memory.search:
@@ -104,8 +153,17 @@ tools:
     schema_format: json_schema
     strict: true
     side_effect: read
+    idempotent: true
+    runtime: schift
+    execution:
+      mode: server
+      binding: schift.memory.search
+      timeout_ms: 10000
+    approval:
+      mode: none
     input_schema:
       type: object
+      additionalProperties: false
       required: [query]
       properties:
         query:
@@ -125,9 +183,22 @@ tool_calling:
 native:
   token_counter:
     required: true
+    fields:
+      - prompt_tokens
+      - completion_tokens
+      - reasoning_tokens
+      - cached_tokens
+      - tool_call_tokens
+      - total_tokens
   logging:
     level: info
-    events: [run.started, step.completed, tool.completed, run.completed]
+    events:
+      - run.started
+      - step.started
+      - tool.started
+      - tool.completed
+      - run.completed
+      - run.failed
   audit:
     checkpoints:
       - id: before_final_answer
@@ -135,33 +206,74 @@ native:
         required: true
 
 graph:
-  start: route
+  start: triage
   nodes:
-    route:
+    triage:
       type: agent
-      ref: root
-    research:
-      type: agent
-      ref: researcher
+      ref: triage
     done:
       type: end
   edges:
-    - from: route
-      to: research
-    - from: research
+    - from: triage
       to: done
 ```
 
-## Package API
+See [examples/research-router.awp.yaml](./examples/research-router.awp.yaml) for
+a fuller graph with parallel specialist branches and audit checkpoints.
 
-```ts
-import {
-  parseAwpYaml,
-  stringifyAwpYaml,
-  validateAwpTemplate,
-  SUPPORTED_SDK_TARGETS,
-} from "@schift-io/agent-workflow-protocol";
+## Tool Calling Model
+
+AWP standardizes the full tool lifecycle.
+
+| Layer | AWP field / event | Purpose |
+| --- | --- | --- |
+| Declaration | `tools.*` | Stable tool identity, schema, runtime, side effects, approval policy |
+| Choice | `tool_calling.default_choice` | Model-level tool-choice policy |
+| Parallelism | `tool_calling.parallelism` | Concurrency and result-buffering policy |
+| Correlation | `protocol_call_id` | Runtime-neutral call id for logs, replay, and audit |
+| Streaming | `tool.call.delta` | Partial arguments or incremental tool-call data |
+| Approval | `tool.approval.requested`, `tool.approval.decided` | Host/runtime approval before side effects |
+| Execution | `tool.started`, `tool.completed`, `tool.failed` | Tool execution evidence |
+| Accounting | `AwpTokenUsage` | Provider-exposed token counters, never fabricated |
+
+Detailed rules are in [docs/tool-calling.md](./docs/tool-calling.md).
+
+## Repository Map
+
+```text
+.
+├── docs/
+│   ├── sdk-mapping.md
+│   └── tool-calling.md
+├── examples/
+│   └── research-router.awp.yaml
+├── schemas/
+│   └── awp.v0.schema.json
+├── spec/
+│   └── awp.v0.md
+├── src/
+│   ├── index.ts
+│   ├── supported-sdks.ts
+│   ├── types.ts
+│   ├── validate.ts
+│   └── yaml.ts
+└── test/
+    └── awp.test.mjs
 ```
+
+## Design Docs
+
+- [AWP v0.1 draft](./spec/awp.v0.md)
+- [Tool calling protocol](./docs/tool-calling.md)
+- [SDK mapping](./docs/sdk-mapping.md)
+
+## Roadmap
+
+1. Add adapter test fixtures for every supported target.
+2. Implement `@schift-io/awp-langgraph`.
+3. Implement `@schift-io/awp-vercel-ai-sdk`.
+4. Add OpenAI, Anthropic, Gemini, and MCP tool-surface normalizers.
+5. Wire Schift API/UI import, preview, validation, and run evidence storage.
 
 ## Non-Goals
 
