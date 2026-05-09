@@ -31,6 +31,7 @@ validator, supported-target metadata, and SDK mapping rules.
 | Tool-calling normalization spec | Implemented |
 | Native token/log/audit evidence spec | Implemented |
 | Runtime adapters | Planned |
+| Reference runner | Implemented |
 
 ## Why AWP Exists
 
@@ -118,6 +119,40 @@ const result = validateAwpTemplate(template);
 if (!result.valid) {
   console.error(result.diagnostics);
 }
+```
+
+## Run A Template
+
+The first executable target is the **reference runner**. It does not call real
+models or tools. It walks the graph and writes the standard run evidence that
+real adapters must also produce.
+
+```bash
+npm run build
+node dist/cli.js run examples/research-router.awp.yaml \
+  --target reference \
+  --input '{"query":"How should logs work?"}'
+```
+
+Output:
+
+```text
+run_id: awp_run_...
+status: completed
+events: 40
+artifacts: 8
+log: .awp-runs/<run_id>/events.jsonl
+summary: .awp-runs/<run_id>/run.json
+```
+
+The run directory contains:
+
+```text
+.awp-runs/<run_id>/
+├── run.json
+├── events.jsonl
+├── artifacts.json
+└── intermediate-results.json
 ```
 
 ## Minimal Template
@@ -266,6 +301,7 @@ Detailed rules are in [docs/tool-calling.md](./docs/tool-calling.md).
 - [AWP v0.1 draft](./spec/awp.v0.md)
 - [Tool calling protocol](./docs/tool-calling.md)
 - [SDK mapping](./docs/sdk-mapping.md)
+- [Run logging](./docs/run-logging.md)
 
 ## Roadmap
 

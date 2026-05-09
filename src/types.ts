@@ -112,8 +112,10 @@ export interface AwpConnectorSpec {
 export type AwpNativeEvent =
   | "run.started"
   | "step.started"
+  | "state.updated"
   | "model.started"
   | "model.completed"
+  | "token.usage"
   | "tool.call.delta"
   | "tool.started"
   | "tool.approval.requested"
@@ -124,6 +126,7 @@ export type AwpNativeEvent =
   | "connector.completed"
   | "audit.requested"
   | "audit.decided"
+  | "artifact.created"
   | "step.completed"
   | "run.completed"
   | "run.failed";
@@ -155,6 +158,9 @@ export interface AwpNativeSpec {
   };
 }
 
+export type AwpRunStatus = "running" | "completed" | "failed" | "cancelled";
+export type AwpTokenUsageSource = "provider" | "gateway" | "adapter_estimate" | "unavailable";
+
 export type AwpToolCallStatus =
   | "proposed"
   | "approval_requested"
@@ -166,12 +172,55 @@ export type AwpToolCallStatus =
   | "cancelled";
 
 export interface AwpTokenUsage {
+  source?: AwpTokenUsageSource;
+  estimated?: boolean;
   prompt_tokens?: number;
   completion_tokens?: number;
   reasoning_tokens?: number;
   cached_tokens?: number;
   tool_call_tokens?: number;
   total_tokens?: number;
+}
+
+export interface AwpRunEvent {
+  run_id: string;
+  event_id: string;
+  sequence: number;
+  timestamp: string;
+  type: AwpNativeEvent;
+  level?: "debug" | "info" | "warn" | "error";
+  template_id?: string;
+  node_id?: string;
+  step_id?: string;
+  tool_call_id?: string;
+  artifact_id?: string;
+  payload?: Record<string, unknown>;
+  usage?: AwpTokenUsage;
+}
+
+export interface AwpRunArtifact {
+  artifact_id: string;
+  run_id: string;
+  node_id?: string;
+  step_id?: string;
+  kind: "intermediate_result" | "tool_result" | "audit_decision" | "state_snapshot" | "final_output";
+  name: string;
+  created_at: string;
+  payload: unknown;
+}
+
+export interface AwpRunResult {
+  run_id: string;
+  template_id: string;
+  target: string;
+  status: AwpRunStatus;
+  started_at: string;
+  completed_at?: string;
+  events: AwpRunEvent[];
+  artifacts: AwpRunArtifact[];
+  intermediate_results: Record<string, unknown>;
+  outputs: Record<string, unknown>;
+  usage?: AwpTokenUsage;
 }
 
 export interface AwpToolCallRecord {

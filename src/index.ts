@@ -15,12 +15,17 @@ export type {
   AwpNativeSpec,
   AwpNodeSpec,
   AwpNodeType,
+  AwpRunArtifact,
+  AwpRunEvent,
+  AwpRunResult,
+  AwpRunStatus,
   AwpScalarType,
   AwpSchema,
   AwpStateSpec,
   AwpTemplate,
   AwpTokenCounterField,
   AwpTokenUsage,
+  AwpTokenUsageSource,
   AwpToolApprovalMode,
   AwpToolApprovalSpec,
   AwpToolCallRecord,
@@ -52,3 +57,12 @@ export {
   parseAwpYaml,
   stringifyAwpYaml,
 } from "./yaml.js";
+
+export {
+  createAwpRunId,
+  runAwpReference,
+} from "./run.js";
+
+export type {
+  RunAwpReferenceOptions,
+} from "./run.js";

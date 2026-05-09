@@ -6,6 +6,7 @@ import {
   AWP_VERSION,
   SUPPORTED_SDK_TARGETS,
   parseAwpYaml,
+  runAwpReference,
   stringifyAwpYaml,
   validateAwpTemplate,
 } from "../dist/index.js";
@@ -59,4 +60,24 @@ test("exposes supported SDK targets", () => {
       "mcp-tools",
     ],
   );
+});
+
+test("reference runner emits run ids, logs, and intermediate artifacts", () => {
+  const source = readFileSync(new URL("../examples/research-router.awp.yaml", import.meta.url), "utf8");
+  const template = parseAwpYaml(source);
+  const result = runAwpReference(template, {
+    runId: "awp_run_test",
+    input: { query: "How should logs work?" },
+    now: () => new Date("2026-05-09T00:00:00.000Z"),
+  });
+
+  assert.equal(result.run_id, "awp_run_test");
+  assert.equal(result.status, "completed");
+  assert.ok(result.events.some((event) => event.type === "run.started"));
+  assert.ok(result.events.some((event) => event.type === "tool.completed"));
+  assert.ok(result.events.some((event) => event.type === "audit.decided"));
+  assert.ok(result.artifacts.some((artifact) => artifact.kind === "intermediate_result"));
+  assert.ok(result.artifacts.some((artifact) => artifact.kind === "tool_result"));
+  assert.ok(result.artifacts.some((artifact) => artifact.kind === "final_output"));
+  assert.ok(result.intermediate_results.memory);
 });
