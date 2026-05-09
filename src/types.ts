@@ -114,6 +114,9 @@ export type AwpNativeEvent =
   | "step.started"
   | "state.updated"
   | "model.started"
+  | "model.output.delta"
+  | "model.structured_output"
+  | "reasoning.summary"
   | "model.completed"
   | "token.usage"
   | "tool.call.delta"
@@ -147,6 +150,23 @@ export interface AwpNativeSpec {
   logging?: {
     level?: "debug" | "info" | "warn" | "error";
     events?: AwpNativeEvent[];
+  };
+  streaming?: {
+    enabled?: boolean;
+    persist_deltas?: boolean;
+    include_text_deltas?: boolean;
+    include_tool_call_deltas?: boolean;
+    snapshot_interval_ms?: number;
+  };
+  structured_output?: {
+    required?: boolean;
+    mode?: "json_schema" | "tool_result" | "adapter";
+    schema?: Record<string, unknown>;
+  };
+  reasoning?: {
+    capture?: "none" | "provider_summary" | "redacted_trace" | "metadata_only";
+    include_raw_thinking?: false;
+    summary_required?: boolean;
   };
   audit?: {
     checkpoints?: Array<{
@@ -194,6 +214,7 @@ export interface AwpRunEvent {
   step_id?: string;
   tool_call_id?: string;
   artifact_id?: string;
+  duration_ms?: number;
   payload?: Record<string, unknown>;
   usage?: AwpTokenUsage;
 }
@@ -203,7 +224,15 @@ export interface AwpRunArtifact {
   run_id: string;
   node_id?: string;
   step_id?: string;
-  kind: "intermediate_result" | "tool_result" | "audit_decision" | "state_snapshot" | "final_output";
+  kind:
+    | "intermediate_result"
+    | "tool_result"
+    | "audit_decision"
+    | "state_snapshot"
+    | "structured_output"
+    | "reasoning_summary"
+    | "stream_snapshot"
+    | "final_output";
   name: string;
   created_at: string;
   payload: unknown;
@@ -216,6 +245,7 @@ export interface AwpRunResult {
   status: AwpRunStatus;
   started_at: string;
   completed_at?: string;
+  duration_ms?: number;
   events: AwpRunEvent[];
   artifacts: AwpRunArtifact[];
   intermediate_results: Record<string, unknown>;

@@ -35,8 +35,14 @@ Runtimes that claim native AWP support should emit comparable events:
 
 - `run.started`
 - `step.started`
+- `state.updated`
 - `model.started`
+- `model.output.delta`
+- `model.structured_output`
+- `reasoning.summary`
 - `model.completed`
+- `token.usage`
+- `tool.call.delta`
 - `tool.started`
 - `tool.completed`
 - `connector.started`
@@ -55,6 +61,14 @@ Token counters should use the same field names across runtimes:
 - `cached_tokens`
 - `tool_call_tokens`
 - `total_tokens`
+
+Completed events should include `duration_ms` when the runtime can measure it.
+Model events should include provider/name settings and provider response ids when
+available.
+
+Structured outputs should be persisted as `structured_output` artifacts.
+Reasoning evidence should use provider summaries, redacted traces, or metadata;
+hidden raw chain-of-thought is not an AWP log artifact.
 
 ## Tool Calling Contract
 

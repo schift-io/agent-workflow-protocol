@@ -181,6 +181,35 @@
           },
           "additionalProperties": true
         },
+        "streaming": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "persist_deltas": { "type": "boolean" },
+            "include_text_deltas": { "type": "boolean" },
+            "include_tool_call_deltas": { "type": "boolean" },
+            "snapshot_interval_ms": { "type": "integer" }
+          },
+          "additionalProperties": true
+        },
+        "structured_output": {
+          "type": "object",
+          "properties": {
+            "required": { "type": "boolean" },
+            "mode": { "enum": ["json_schema", "tool_result", "adapter"] },
+            "schema": { "type": "object" }
+          },
+          "additionalProperties": true
+        },
+        "reasoning": {
+          "type": "object",
+          "properties": {
+            "capture": { "enum": ["none", "provider_summary", "redacted_trace", "metadata_only"] },
+            "include_raw_thinking": { "const": false },
+            "summary_required": { "type": "boolean" }
+          },
+          "additionalProperties": true
+        },
         "audit": {
           "type": "object",
           "properties": {

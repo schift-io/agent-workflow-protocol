@@ -1,10 +1,12 @@
 import { randomUUID } from "node:crypto";
 import type {
+  AwpModelRef,
   AwpNativeEvent,
   AwpRunArtifact,
   AwpRunEvent,
   AwpRunResult,
   AwpTemplate,
+  AwpTokenUsage,
   AwpToolCallRecord,
 } from "./types.js";
 import { validateAwpTemplate } from "./validate.js";
@@ -20,6 +22,7 @@ interface RuntimeState {
   runId: string;
   template: AwpTemplate;
   startedAt: string;
+  startedAtMs: number;
   input: Record<string, unknown>;
   events: AwpRunEvent[];
   artifacts: AwpRunArtifact[];
@@ -47,10 +50,12 @@ export function runAwpReference(
   }
 
   const now = options.now ?? (() => new Date());
+  const startedAt = now();
   const state: RuntimeState = {
     runId: options.runId ?? createAwpRunId(),
     template,
-    startedAt: now().toISOString(),
+    startedAt: startedAt.toISOString(),
+    startedAtMs: startedAt.getTime(),
     input: options.input ?? {},
     events: [],
     artifacts: [],
@@ -78,12 +83,18 @@ export function runAwpReference(
     executeNode(state, nodeId);
   }
 
-  const completedAt = now().toISOString();
+  const completedAt = now();
+  const durationMs = Math.max(0, completedAt.getTime() - state.startedAtMs);
+  const usage = aggregateUsage(state.events
+    .filter((event) => event.type === "token.usage")
+    .map((event) => event.usage));
   emit(state, "run.completed", {
     status: "completed",
     artifact_count: state.artifacts.length,
     event_count: state.events.length + 1,
-  });
+    duration_ms: durationMs,
+    model_invocation_count: state.events.filter((event) => event.type === "model.started").length,
+  }, undefined, undefined, undefined, undefined, usage, durationMs);
 
   return {
     run_id: state.runId,
@@ -91,20 +102,20 @@ export function runAwpReference(
     target: options.target ?? "reference",
     status: "completed",
     started_at: state.startedAt,
-    completed_at: completedAt,
+    completed_at: completedAt.toISOString(),
+    duration_ms: durationMs,
     events: state.events,
     artifacts: state.artifacts,
     intermediate_results: state.intermediateResults,
     outputs: state.outputs,
-    usage: {
-      source: "unavailable",
-    },
+    usage,
   };
 }
 
 function executeNode(state: RuntimeState, nodeId: string): void {
   const node = state.template.graph.nodes[nodeId];
   const stepId = `${state.runId}_step_${String(state.sequence + 1).padStart(4, "0")}`;
+  const stepStartedAtMs = state.now().getTime();
 
   emit(state, "step.started", {
     node_type: node.type,
@@ -139,10 +150,12 @@ function executeNode(state: RuntimeState, nodeId: string): void {
       break;
   }
 
+  const stepDurationMs = elapsedSince(state, stepStartedAtMs);
   emit(state, "step.completed", {
     node_type: node.type,
     artifact_count: state.artifacts.filter((artifact) => artifact.step_id === stepId).length,
-  }, nodeId, stepId);
+    duration_ms: stepDurationMs,
+  }, nodeId, stepId, undefined, undefined, undefined, stepDurationMs);
 }
 
 function executeAgentNode(
@@ -152,11 +165,18 @@ function executeAgentNode(
   agentId: string | undefined,
 ): void {
   const agent = agentId ? state.template.agents[agentId] : undefined;
+  const modelStartedAtMs = state.now().getTime();
+  const model = agent?.model;
 
   emit(state, "model.started", {
     agent_id: agentId,
     role: agent?.role,
-    model: agent?.model,
+    model: model ?? null,
+    model_resolution: model ? "template" : "unresolved",
+    model_provider: model?.provider,
+    model_name: model?.name,
+    temperature: model?.temperature,
+    max_output_tokens: model?.max_output_tokens,
   }, nodeId, stepId);
 
   const toolCalls: AwpToolCallRecord[] = [];
@@ -164,24 +184,103 @@ function executeAgentNode(
     toolCalls.push(executeReferenceToolCall(state, toolName, nodeId, stepId));
   }
 
+  const message = `Reference output for agent '${agentId ?? nodeId}'.`;
+  emitModelOutputDeltas(state, nodeId, stepId, message, model);
+
+  const reasoningCapture = state.template.native?.reasoning?.capture ?? "provider_summary";
+  if (reasoningCapture !== "none") {
+    const reasoningSummary = {
+      capture: reasoningCapture,
+      raw_thinking_captured: false,
+      summary:
+        "Reference runner records provider-exposed reasoning summaries or metadata only; hidden raw chain-of-thought is intentionally excluded.",
+      model: model ?? null,
+      model_resolution: model ? "template" : "unresolved",
+      model_provider: model?.provider,
+      model_name: model?.name,
+    };
+    const artifact = createArtifact(
+      state,
+      "reasoning_summary",
+      `${nodeId}.reasoning_summary`,
+      reasoningSummary,
+      nodeId,
+      stepId,
+    );
+    emit(state, "reasoning.summary", {
+      ...reasoningSummary,
+      artifact_id: artifact.artifact_id,
+    }, nodeId, stepId, undefined, artifact.artifact_id);
+  }
+
+  const structuredOutput = {
+    type: "awp.reference.agent_output",
+    agent_id: agentId,
+    role: agent?.role,
+    node_id: nodeId,
+    model: model ?? null,
+    model_resolution: model ? "template" : "unresolved",
+    message,
+    input_keys: Object.keys(state.input),
+    tool_call_count: toolCalls.length,
+    tool_call_ids: toolCalls.map((toolCall) => toolCall.protocol_call_id),
+  };
+  const structuredArtifact = createArtifact(
+    state,
+    "structured_output",
+    `${nodeId}.structured_output`,
+    structuredOutput,
+    nodeId,
+    stepId,
+  );
+  emit(state, "model.structured_output", {
+    artifact_id: structuredArtifact.artifact_id,
+    output_type: structuredOutput.type,
+    output_keys: Object.keys(structuredOutput),
+    schema_mode: state.template.native?.structured_output?.mode ?? "adapter",
+    required: state.template.native?.structured_output?.required ?? false,
+  }, nodeId, stepId, undefined, structuredArtifact.artifact_id);
+
   const result = {
     agent_id: agentId,
     role: agent?.role,
     node_id: nodeId,
+    model: model ?? null,
+    model_resolution: model ? "template" : "unresolved",
     mode: "reference",
-    message: `Reference output for agent '${agentId ?? nodeId}'.`,
+    message,
     input: state.input,
     tool_calls: toolCalls,
+    structured_output: structuredOutput,
+    structured_output_artifact_id: structuredArtifact.artifact_id,
   };
   state.intermediateResults[nodeId] = result;
   createArtifact(state, "intermediate_result", `${nodeId}.agent_output`, result, nodeId, stepId);
 
+  const usage = estimateUsage(state.input, {
+    message,
+    structured_output: structuredOutput,
+    tool_calls: toolCalls.map((toolCall) => toolCall.arguments_json),
+  });
+  const modelDurationMs = elapsedSince(state, modelStartedAtMs);
   emit(state, "model.completed", {
     agent_id: agentId,
+    model: model ?? null,
+    model_resolution: model ? "template" : "unresolved",
+    model_provider: model?.provider,
+    model_name: model?.name,
+    duration_ms: modelDurationMs,
     token_usage: {
-      source: "unavailable",
+      ...usage,
     },
-  }, nodeId, stepId);
+  }, nodeId, stepId, undefined, undefined, usage, modelDurationMs);
+  emit(state, "token.usage", {
+    scope: "model",
+    agent_id: agentId,
+    model: model ?? null,
+    model_resolution: model ? "template" : "unresolved",
+    duration_ms: modelDurationMs,
+  }, nodeId, stepId, undefined, undefined, usage, modelDurationMs);
 }
 
 function executeToolNode(
@@ -219,6 +318,8 @@ function executeReferenceToolCall(
     mode: "reference",
   });
 
+  emitToolCallDeltas(state, nodeId, stepId, protocolCallId, toolName, argumentsJson);
+
   if (tool?.approval?.mode && tool.approval.mode !== "none") {
     emit(state, "tool.approval.requested", {
       tool_name: toolName,
@@ -232,6 +333,7 @@ function executeReferenceToolCall(
     }, nodeId, stepId, protocolCallId);
   }
 
+  const toolStartedAtMs = state.now().getTime();
   emit(state, "tool.started", {
     tool_name: toolName,
     protocol_call_id: protocolCallId,
@@ -240,21 +342,21 @@ function executeReferenceToolCall(
     arguments_json: argumentsJson,
   }, nodeId, stepId, protocolCallId);
 
+  const resultPayload = {
+    mode: "reference",
+    message: `Tool '${toolName}' was not externally executed; this is a reference result.`,
+    kind: tool?.kind,
+  };
+  const usage = estimateUsage(argumentsJson, resultPayload);
   const record: AwpToolCallRecord = {
     protocol_call_id: protocolCallId,
     tool_name: toolName,
     arguments_json: argumentsJson,
     status: "completed",
     approval_state: tool?.approval?.mode && tool.approval.mode !== "none" ? "approved" : "not_required",
-    result_payload: {
-      mode: "reference",
-      message: `Tool '${toolName}' was not externally executed; this is a reference result.`,
-      kind: tool?.kind,
-    },
+    result_payload: resultPayload,
     is_error: false,
-    usage: {
-      source: "unavailable",
-    },
+    usage,
     audit_metadata: {
       node_id: nodeId,
       step_id: stepId,
@@ -263,11 +365,19 @@ function executeReferenceToolCall(
   };
 
   createArtifact(state, "tool_result", `${toolName}.tool_result`, record, nodeId, stepId);
+  const toolDurationMs = elapsedSince(state, toolStartedAtMs);
   emit(state, "tool.completed", {
     tool_name: toolName,
     protocol_call_id: protocolCallId,
+    duration_ms: toolDurationMs,
     result_payload: record.result_payload as Record<string, unknown>,
-  }, nodeId, stepId, protocolCallId);
+  }, nodeId, stepId, protocolCallId, undefined, usage, toolDurationMs);
+  emit(state, "token.usage", {
+    scope: "tool",
+    tool_name: toolName,
+    protocol_call_id: protocolCallId,
+    duration_ms: toolDurationMs,
+  }, nodeId, stepId, protocolCallId, undefined, usage, toolDurationMs);
 
   return record;
 }
@@ -317,6 +427,8 @@ function emit(
   stepId?: string,
   toolCallId?: string,
   artifactId?: string,
+  usage?: AwpTokenUsage,
+  durationMs?: number,
 ): AwpRunEvent {
   state.sequence += 1;
   const event: AwpRunEvent = {
@@ -325,16 +437,151 @@ function emit(
     sequence: state.sequence,
     timestamp: state.now().toISOString(),
     type,
-    level: type.endsWith(".failed") ? "error" : "info",
+    level: eventLevel(type),
     template_id: state.template.id,
     node_id: nodeId,
     step_id: stepId,
     tool_call_id: toolCallId,
     artifact_id: artifactId,
+    duration_ms: durationMs,
     payload,
+    usage,
   };
   state.events.push(event);
   return event;
+}
+
+function eventLevel(type: AwpNativeEvent): AwpRunEvent["level"] {
+  if (type.endsWith(".failed")) {
+    return "error";
+  }
+  if (type.endsWith(".delta") || type === "reasoning.summary" || type === "token.usage") {
+    return "debug";
+  }
+  return "info";
+}
+
+function emitModelOutputDeltas(
+  state: RuntimeState,
+  nodeId: string,
+  stepId: string,
+  text: string,
+  model: AwpModelRef | undefined,
+): void {
+  const streaming = state.template.native?.streaming;
+  if (streaming?.enabled === false || streaming?.include_text_deltas === false) {
+    return;
+  }
+
+  const chunks = chunkText(text, 24);
+  let accumulatedLength = 0;
+  chunks.forEach((delta, index) => {
+    accumulatedLength += delta.length;
+    emit(state, "model.output.delta", {
+      index,
+      channel: "assistant_text",
+      delta,
+      accumulated_length: accumulatedLength,
+      is_final: index === chunks.length - 1,
+      model: model ?? null,
+      model_resolution: model ? "template" : "unresolved",
+      model_provider: model?.provider,
+      model_name: model?.name,
+    }, nodeId, stepId);
+  });
+}
+
+function emitToolCallDeltas(
+  state: RuntimeState,
+  nodeId: string,
+  stepId: string,
+  protocolCallId: string,
+  toolName: string,
+  argumentsJson: string,
+): void {
+  const streaming = state.template.native?.streaming;
+  if (streaming?.enabled === false || streaming?.include_tool_call_deltas === false) {
+    return;
+  }
+
+  const chunks = chunkText(argumentsJson, Math.max(32, Math.ceil(argumentsJson.length / 2)));
+  chunks.forEach((delta, index) => {
+    emit(state, "tool.call.delta", {
+      index,
+      tool_name: toolName,
+      protocol_call_id: protocolCallId,
+      delta_type: "arguments_json",
+      arguments_delta: delta,
+      is_final: index === chunks.length - 1,
+    }, nodeId, stepId, protocolCallId);
+  });
+}
+
+function chunkText(text: string, maxLength: number): string[] {
+  if (text.length <= maxLength) {
+    return [text];
+  }
+  const chunks: string[] = [];
+  for (let index = 0; index < text.length; index += maxLength) {
+    chunks.push(text.slice(index, index + maxLength));
+  }
+  return chunks;
+}
+
+function estimateUsage(input: unknown, output: unknown): AwpTokenUsage {
+  const promptTokens = estimateTokens(input);
+  const completionTokens = estimateTokens(output);
+  const totalTokens = promptTokens + completionTokens;
+
+  return {
+    source: "adapter_estimate",
+    estimated: true,
+    prompt_tokens: promptTokens,
+    completion_tokens: completionTokens,
+    reasoning_tokens: 0,
+    cached_tokens: 0,
+    tool_call_tokens: 0,
+    total_tokens: totalTokens,
+  };
+}
+
+function estimateTokens(value: unknown): number {
+  const serialized = typeof value === "string" ? value : JSON.stringify(value ?? "");
+  return Math.ceil(serialized.length / 4);
+}
+
+function aggregateUsage(usages: Array<AwpTokenUsage | undefined>): AwpTokenUsage {
+  const known = usages.filter((usage): usage is AwpTokenUsage => usage !== undefined);
+  if (known.length === 0) {
+    return {
+      source: "unavailable",
+    };
+  }
+
+  return {
+    source: known.every((usage) => usage.source === "provider") ? "provider" : "adapter_estimate",
+    estimated: known.some((usage) => usage.estimated),
+    prompt_tokens: sumUsageField(known, "prompt_tokens"),
+    completion_tokens: sumUsageField(known, "completion_tokens"),
+    reasoning_tokens: sumUsageField(known, "reasoning_tokens"),
+    cached_tokens: sumUsageField(known, "cached_tokens"),
+    tool_call_tokens: sumUsageField(known, "tool_call_tokens"),
+    total_tokens: sumUsageField(known, "total_tokens"),
+  };
+}
+
+function sumUsageField(usages: AwpTokenUsage[], field: keyof AwpTokenUsage): number | undefined {
+  const values = usages
+    .map((usage) => usage[field])
+    .filter((value): value is number => typeof value === "number");
+  if (values.length === 0) {
+    return undefined;
+  }
+  return values.reduce((sum, value) => sum + value, 0);
+}
+
+function elapsedSince(state: RuntimeState, startedAtMs: number): number {
+  return Math.max(0, state.now().getTime() - startedAtMs);
 }
 
 function reachableTopologicalOrder(template: AwpTemplate): string[] {

@@ -89,12 +89,18 @@ AWP does not treat observability as an afterthought. Templates can require:
 
 - token counters
 - structured run logs
+- model identity and per-step duration
 - tool-call records
 - streaming deltas
+- structured output artifacts
+- provider-exposed reasoning summaries
 - approval events
 - intermediate audit checkpoints
 
 This lets Schift, LangGraph, and Vercel AI SDK runs produce comparable evidence.
+AWP does not require or permit storing hidden raw chain-of-thought; adapters log
+reasoning summaries, token metadata, or redacted traces only when the provider
+or host runtime exposes them.
 
 ## Quick Start
 
@@ -139,8 +145,8 @@ Output:
 ```text
 run_id: awp_run_...
 status: completed
-events: 40
-artifacts: 8
+events: <count>
+artifacts: <count>
 log: .awp-runs/<run_id>/events.jsonl
 summary: .awp-runs/<run_id>/run.json
 ```
@@ -154,6 +160,12 @@ The run directory contains:
 ├── artifacts.json
 └── intermediate-results.json
 ```
+
+`events.jsonl` includes lifecycle, model, streaming, tool, token, audit, and
+duration events. `artifacts.json` includes intermediate results, normalized tool
+results, structured outputs, reasoning summaries, audit decisions, and the final
+output. This is the debugging surface Schift API/UI and SDK adapters should read
+instead of scraping provider-specific logs.
 
 ## Minimal Template
 
@@ -230,10 +242,29 @@ native:
     events:
       - run.started
       - step.started
+      - model.started
+      - model.output.delta
+      - model.structured_output
+      - reasoning.summary
+      - model.completed
+      - token.usage
+      - tool.call.delta
       - tool.started
       - tool.completed
       - run.completed
       - run.failed
+  streaming:
+    enabled: true
+    persist_deltas: true
+    include_text_deltas: true
+    include_tool_call_deltas: true
+  structured_output:
+    required: true
+    mode: adapter
+  reasoning:
+    capture: provider_summary
+    include_raw_thinking: false
+    summary_required: true
   audit:
     checkpoints:
       - id: before_final_answer

@@ -13,6 +13,8 @@ objects and normalize runtime events back into AWP run evidence.
 | `tool_calling.parallelism` | Parallel graph supersteps or tool node fan-out | Host JS parallelism or SDK parallel tool calls | Worker/executor concurrency caps |
 | `native.audit` | Checkpointer plus interrupts / resume commands | Approval request/result parts and application state | Schift audit log and approval workflow |
 | `native.token_counter` | Provider metadata or tracing integration | `usage` / `totalUsage` | Schift run ledger |
+| `native.streaming` | Stream modes plus custom events | `streamText` parts | Schift live run event feed |
+| `native.structured_output` | Node output schema / adapter validation | `experimental_output` or host validation | Schift structured artifact |
 | AWP events | LangGraph stream modes and custom events | Stream parts and lifecycle callbacks | Schift run events |
 
 ## Adapter Rules
@@ -29,11 +31,15 @@ objects and normalize runtime events back into AWP run evidence.
    Runtime-specific stream events must be mapped to AWP events before they are
    persisted or displayed.
 
-4. Treat approvals as resumable state.
+4. Preserve model evidence.
+   Model provider/name, duration, token usage, structured output, and streaming
+   deltas must be queryable through AWP events or artifacts.
+
+5. Treat approvals as resumable state.
    LangGraph can resume through checkpointers. Vercel AI SDK adapters should
    persist enough message/tool state to continue after an approval response.
 
-5. Do not hide missing tool results.
+6. Do not hide missing tool results.
    If a model turn produced N tool calls, the adapter must either return N
    results, mark skipped/rejected calls explicitly, or fail the step.
 

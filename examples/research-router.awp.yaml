@@ -33,10 +33,16 @@ agents:
     max_steps: 8
   memory_researcher:
     role: researcher
+    model:
+      provider: openai
+      name: gpt-4.1-mini
     instructions: Search connected Schift memory sources and summarize relevant findings.
     tools: [memory.search]
   code_analyst:
     role: analyst
+    model:
+      provider: openai
+      name: gpt-4.1-mini
     instructions: Search source code and return file-level evidence.
     tools: [code.search]
 
@@ -110,6 +116,13 @@ native:
     events:
       - run.started
       - step.started
+      - model.started
+      - model.output.delta
+      - model.structured_output
+      - reasoning.summary
+      - model.completed
+      - token.usage
+      - tool.call.delta
       - tool.started
       - tool.completed
       - audit.requested
@@ -117,6 +130,19 @@ native:
       - step.completed
       - run.completed
       - run.failed
+  streaming:
+    enabled: true
+    persist_deltas: true
+    include_text_deltas: true
+    include_tool_call_deltas: true
+    snapshot_interval_ms: 1000
+  structured_output:
+    required: true
+    mode: adapter
+  reasoning:
+    capture: provider_summary
+    include_raw_thinking: false
+    summary_required: true
   audit:
     checkpoints:
       - id: before_final_answer

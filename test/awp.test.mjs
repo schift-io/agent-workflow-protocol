@@ -18,6 +18,9 @@ test("parses and validates the example AWP YAML", () => {
   assert.equal(template.schema, AWP_SCHEMA);
   assert.equal(template.version, AWP_VERSION);
   assert.equal(template.native?.token_counter?.required, true);
+  assert.equal(template.native?.streaming?.enabled, true);
+  assert.equal(template.native?.structured_output?.required, true);
+  assert.equal(template.native?.reasoning?.include_raw_thinking, false);
   assert.equal(template.tool_calling?.mint_protocol_call_id, true);
   assert.equal(template.tools?.["memory.search"]?.schema_format, "json_schema");
   assert.equal(validateAwpTemplate(template).valid, true);
@@ -73,11 +76,21 @@ test("reference runner emits run ids, logs, and intermediate artifacts", () => {
 
   assert.equal(result.run_id, "awp_run_test");
   assert.equal(result.status, "completed");
+  assert.equal(result.duration_ms, 0);
+  assert.equal(result.usage?.source, "adapter_estimate");
   assert.ok(result.events.some((event) => event.type === "run.started"));
+  assert.ok(result.events.some((event) => event.type === "model.started" && event.payload?.model_name === "gpt-4.1-mini"));
+  assert.ok(result.events.some((event) => event.type === "model.output.delta"));
+  assert.ok(result.events.some((event) => event.type === "model.structured_output"));
+  assert.ok(result.events.some((event) => event.type === "reasoning.summary" && event.payload?.raw_thinking_captured === false));
+  assert.ok(result.events.some((event) => event.type === "token.usage" && event.usage?.total_tokens));
+  assert.ok(result.events.some((event) => event.type === "tool.call.delta"));
   assert.ok(result.events.some((event) => event.type === "tool.completed"));
   assert.ok(result.events.some((event) => event.type === "audit.decided"));
   assert.ok(result.artifacts.some((artifact) => artifact.kind === "intermediate_result"));
   assert.ok(result.artifacts.some((artifact) => artifact.kind === "tool_result"));
+  assert.ok(result.artifacts.some((artifact) => artifact.kind === "structured_output"));
+  assert.ok(result.artifacts.some((artifact) => artifact.kind === "reasoning_summary"));
   assert.ok(result.artifacts.some((artifact) => artifact.kind === "final_output"));
   assert.ok(result.intermediate_results.memory);
 });
