@@ -328,6 +328,7 @@ Detailed rules are in [docs/tool-calling.md](./docs/tool-calling.md).
 .
 ├── docs/
 │   ├── sdk-mapping.md
+│   ├── schift-workflow-v2-target.md
 │   └── tool-calling.md
 ├── examples/
 │   └── research-router.awp.yaml
@@ -351,6 +352,7 @@ Detailed rules are in [docs/tool-calling.md](./docs/tool-calling.md).
 - [Tool calling protocol](./docs/tool-calling.md)
 - [SDK mapping](./docs/sdk-mapping.md)
 - [Run logging](./docs/run-logging.md)
+- [Schift Workflow v2 target](./docs/schift-workflow-v2-target.md)
 
 ## Roadmap
 
