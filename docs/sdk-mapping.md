@@ -43,6 +43,12 @@ objects and normalize runtime events back into AWP run evidence.
    If a model turn produced N tool calls, the adapter must either return N
    results, mark skipped/rejected calls explicitly, or fail the step.
 
+7. Report projection status before execution.
+   Adapter preflight should classify a template as `direct`,
+   `requires_runtime`, or `unsupported`. A target must not silently drop graph
+   edges, connector bindings, approval gates, external egress policy, secret
+   resolution, or structured-output requirements.
+
 ## LangGraph Adapter Notes
 
 - Compile `graph.start` into the `START` edge.
@@ -68,3 +74,10 @@ objects and normalize runtime events back into AWP run evidence.
 - Keep AWP event names in the run ledger even if internal workers use different
   event names.
 - Use Schift audit/compliance tools for `native.audit` checkpoints.
+- Treat Schift Workflow v2 as the native managed-workflow target for AWP.
+  Internal Schift block names are implementation details; public YAML should
+  remain AWP-shaped.
+- `examples/conformance/*.awp.yaml` is the adapter fixture set. Schift can
+  compile it to Workflow v2; Vercel AI SDK, Google Gen AI, and LangGraph
+  adapters must either project the safe subset directly or require Schift
+  runtime explicitly.

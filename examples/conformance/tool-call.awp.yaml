@@ -1,0 +1,74 @@
+schema: agent-workflow-protocol
+version: "0.1"
+id: tool-call
+name: Tool call
+
+inputs:
+  question:
+    type: string
+    required: true
+
+agents:
+  answer:
+    role: grounded-assistant
+    model:
+      provider: openai
+      name: gpt-4o-mini
+    instructions: Search memory before answering.
+    tools: [memory.search]
+
+tools:
+  memory.search:
+    kind: schift.memory.search
+    description: Search a bound Schift memory source.
+    schema_format: json_schema
+    strict: true
+    side_effect: read
+    idempotent: true
+    runtime: schift
+    execution:
+      mode: server
+      binding: schift.memory.search
+      timeout_ms: 10000
+    approval:
+      mode: none
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [query]
+      properties:
+        query:
+          type: string
+
+tool_calling:
+  default_choice:
+    mode: auto
+    allowed_tools: [memory.search]
+  mint_protocol_call_id: true
+  require_results_for_all_calls: true
+
+graph:
+  start: answer
+  nodes:
+    answer:
+      type: agent
+      ref: answer
+    done:
+      type: end
+  edges:
+    - from: answer
+      to: done
+
+adapters:
+  schift:
+    target: workflow_v2
+    status: direct
+  vercel_ai_sdk:
+    target: tool
+    status: direct
+  google_genai:
+    target: functionDeclarations
+    status: direct
+  langgraph_js:
+    target: ToolNode
+    status: direct

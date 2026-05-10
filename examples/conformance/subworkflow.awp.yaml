@@ -1,0 +1,42 @@
+schema: agent-workflow-protocol
+version: "0.1"
+id: subworkflow
+name: Subworkflow
+
+agents:
+  root:
+    role: coordinator
+    model:
+      provider: openai
+      name: gpt-4o-mini
+
+graph:
+  start: delegate
+  nodes:
+    delegate:
+      type: subworkflow
+      ref: contract-review
+      config:
+        template_id: contract-review
+    done:
+      type: end
+  edges:
+    - from: delegate
+      to: done
+
+adapters:
+  schift:
+    target: workflow_v2
+    status: direct
+  vercel_ai_sdk:
+    target: generateText
+    status: requires_runtime
+    runtime: schift
+  google_genai:
+    target: models.generateContent
+    status: requires_runtime
+    runtime: schift
+  langgraph_js:
+    target: StateGraph
+    status: requires_runtime
+    runtime: schift

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 import {
   AWP_SCHEMA,
@@ -93,4 +93,39 @@ test("reference runner emits run ids, logs, and intermediate artifacts", () => {
   assert.ok(result.artifacts.some((artifact) => artifact.kind === "reasoning_summary"));
   assert.ok(result.artifacts.some((artifact) => artifact.kind === "final_output"));
   assert.ok(result.intermediate_results.memory);
+});
+
+test("validates public conformance AWP YAML examples", () => {
+  const dir = new URL("../examples/conformance/", import.meta.url);
+  const files = readdirSync(dir)
+    .filter((file) => file.endsWith(".awp.yaml") && file !== "unsupported-code.awp.yaml")
+    .sort();
+
+  assert.deepEqual(files, [
+    "approval-write.awp.yaml",
+    "multi-step-graph.awp.yaml",
+    "outbound-webhook.awp.yaml",
+    "retrieval-answer.awp.yaml",
+    "simple-llm.awp.yaml",
+    "streaming.awp.yaml",
+    "structured-output.awp.yaml",
+    "subworkflow.awp.yaml",
+    "tool-call.awp.yaml",
+  ]);
+
+  for (const file of files) {
+    const template = parseAwpYaml(readFileSync(new URL(file, dir), "utf8"));
+    const result = validateAwpTemplate(template);
+    assert.equal(result.valid, true, `${file}: ${JSON.stringify(result.diagnostics)}`);
+    assert.equal(template.adapters?.schift?.target, "workflow_v2", file);
+  }
+});
+
+test("rejects policy-disabled code conformance example", () => {
+  const source = readFileSync(
+    new URL("../examples/conformance/unsupported-code.awp.yaml", import.meta.url),
+    "utf8",
+  );
+
+  assert.throws(() => parseAwpYaml(source), /Code nodes are disabled by policy/);
 });

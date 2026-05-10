@@ -75,6 +75,7 @@ export function validateAwpTemplate(template: AwpTemplate): AwpValidationResult 
 
   validateToolChoice("tool_calling.default_choice", template.tool_calling?.default_choice, toolIds, diagnostics);
   validateTools(template, diagnostics);
+  validatePolicies(template, diagnostics);
   validateNative(template, diagnostics);
   validateGraph(template, agentIds, toolIds, connectorIds, diagnostics);
 
@@ -134,6 +135,57 @@ function validateTools(template: AwpTemplate, diagnostics: AwpDiagnostic[]): voi
         message: "Strict tool schemas are most portable when schema_format is json_schema",
       });
     }
+  }
+}
+
+function validatePolicies(template: AwpTemplate, diagnostics: AwpDiagnostic[]): void {
+  const allowedDomains = new Set(template.policies?.egress?.allowed_domains ?? []);
+  for (const [toolId, tool] of Object.entries(template.tools ?? {})) {
+    if (
+      template.policies?.approvals?.write_requires_approval === true &&
+      tool.side_effect === "write" &&
+      (!tool.approval || tool.approval.mode === "none")
+    ) {
+      diagnostics.push({
+        level: "error",
+        path: `tools.${toolId}.approval.mode`,
+        message: "Write tools require approval by policy",
+      });
+    }
+
+    if (
+      template.policies?.approvals?.external_requires_approval === true &&
+      tool.side_effect === "external" &&
+      (!tool.approval || tool.approval.mode === "none")
+    ) {
+      diagnostics.push({
+        level: "error",
+        path: `tools.${toolId}.approval.mode`,
+        message: "External side-effect tools require approval by policy",
+      });
+    }
+
+    if (template.policies?.egress?.require_allowlist === true) {
+      const binding = tool.execution?.binding;
+      if (typeof binding === "string") {
+        const domain = domainOf(binding);
+        if (domain && !allowedDomains.has(domain)) {
+          diagnostics.push({
+            level: "error",
+            path: `tools.${toolId}.execution.binding`,
+            message: `External egress domain is not allowlisted: ${domain}`,
+          });
+        }
+      }
+    }
+  }
+}
+
+function domainOf(value: string): string | undefined {
+  try {
+    return new URL(value).hostname;
+  } catch {
+    return undefined;
   }
 }
 
@@ -198,6 +250,13 @@ function validateGraph(
         level: "error",
         path: `graph.nodes.${nodeId}.ref`,
         message: `Unknown connector '${node.ref}'`,
+      });
+    }
+    if (node.type === "code" && template.policies?.code?.enabled === false) {
+      diagnostics.push({
+        level: "error",
+        path: `graph.nodes.${nodeId}.type`,
+        message: "Code nodes are disabled by policy",
       });
     }
   }

@@ -1,0 +1,65 @@
+schema: agent-workflow-protocol
+version: "0.1"
+id: outbound-webhook
+name: Outbound webhook
+
+policies:
+  egress:
+    require_allowlist: true
+    allowed_domains: [hooks.example.com]
+  approvals:
+    external_requires_approval: true
+
+tools:
+  notify.contracts:
+    kind: http.request
+    description: Notify an external contract review webhook.
+    schema_format: json_schema
+    side_effect: external
+    idempotent: false
+    runtime: http
+    execution:
+      mode: remote
+      binding: https://hooks.example.com/contracts
+    approval:
+      mode: always
+      checkpoint: before_external_webhook
+    input_schema:
+      type: object
+      properties:
+        contract_id:
+          type: string
+
+agents:
+  notifier:
+    role: webhook-notifier
+    tools: [notify.contracts]
+
+graph:
+  start: notify
+  nodes:
+    notify:
+      type: tool
+      ref: notify.contracts
+    done:
+      type: end
+  edges:
+    - from: notify
+      to: done
+
+adapters:
+  schift:
+    target: workflow_v2
+    status: direct
+  vercel_ai_sdk:
+    target: generateText
+    status: requires_runtime
+    runtime: schift
+  google_genai:
+    target: models.generateContent
+    status: requires_runtime
+    runtime: schift
+  langgraph_js:
+    target: StateGraph
+    status: requires_runtime
+    runtime: schift

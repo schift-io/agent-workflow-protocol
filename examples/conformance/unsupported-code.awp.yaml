@@ -1,0 +1,42 @@
+schema: agent-workflow-protocol
+version: "0.1"
+id: unsupported-code
+name: Unsupported code
+
+policies:
+  code:
+    enabled: false
+
+agents:
+  root:
+    role: coordinator
+
+graph:
+  start: transform
+  nodes:
+    transform:
+      type: code
+      config:
+        language: javascript
+        source: return input
+    done:
+      type: end
+  edges:
+    - from: transform
+      to: done
+
+adapters:
+  schift:
+    target: workflow_v2
+    status: unsupported
+    notes:
+      - Code execution is disabled by policy.
+  vercel_ai_sdk:
+    target: generateText
+    status: unsupported
+  google_genai:
+    target: models.generateContent
+    status: unsupported
+  langgraph_js:
+    target: StateGraph
+    status: unsupported

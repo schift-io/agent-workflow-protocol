@@ -33,6 +33,11 @@ validator, supported-target metadata, and SDK mapping rules.
 | Runtime adapters | Planned |
 | Reference runner | Implemented |
 
+The public conformance YAML set lives in `examples/conformance/*.awp.yaml`.
+Schift Workflow v2 is the Schift-native managed-workflow target for these AWP
+templates; internal Schift block names are implementation details, not the
+public YAML contract.
+
 ## Why AWP Exists
 
 Agent frameworks all describe similar ideas with different shapes:
@@ -69,6 +74,19 @@ Machine-readable target metadata is exported as `SUPPORTED_SDK_TARGETS`.
 
 AWP templates are authored as `.awp.yaml`. Generated JSON or SDK objects are
 adapter outputs, not the canonical source.
+
+### Adapter Projection Is Explicit
+
+Every adapter target should classify a template before execution:
+
+- `direct`: the target can run the AWP subset without hiding semantics.
+- `requires_runtime`: a host runtime such as Schift must enforce bindings,
+  approvals, writes, webhooks, secrets, or multi-step dataflow.
+- `unsupported`: the template violates policy or cannot be represented safely.
+
+The conformance examples cover simple LLM calls, structured output, tool calls,
+retrieval, approval-gated writes, outbound webhook allowlists, streaming,
+multi-step graphs, subworkflows, and policy-disabled code.
 
 ### Tool Calls Have Stable IDs
 

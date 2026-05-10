@@ -1,0 +1,62 @@
+schema: agent-workflow-protocol
+version: "0.1"
+id: retrieval-answer
+name: Retrieval then answer
+
+inputs:
+  question:
+    type: string
+    required: true
+
+agents:
+  answer:
+    role: retrieval-grounded-assistant
+    model:
+      provider: google
+      name: gemini-2.5-flash
+    instructions: Answer using retrieved contract context.
+
+connectors:
+  contracts:
+    kind: schift.source
+    source: contracts
+    mode: read
+    scopes: [search]
+
+graph:
+  start: retrieve
+  nodes:
+    retrieve:
+      type: connector
+      ref: contracts
+      config:
+        operation: query
+        query: "{{inputs.question}}"
+        top_k: 5
+    answer:
+      type: agent
+      ref: answer
+    done:
+      type: end
+  edges:
+    - from: retrieve
+      to: answer
+    - from: answer
+      to: done
+
+adapters:
+  schift:
+    target: workflow_v2
+    status: direct
+  vercel_ai_sdk:
+    target: generateText
+    status: requires_runtime
+    runtime: schift
+  google_genai:
+    target: models.generateContent
+    status: requires_runtime
+    runtime: schift
+  langgraph_js:
+    target: StateGraph
+    status: requires_runtime
+    runtime: schift

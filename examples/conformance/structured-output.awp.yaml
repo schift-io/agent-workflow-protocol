@@ -1,0 +1,66 @@
+schema: agent-workflow-protocol
+version: "0.1"
+id: structured-output
+name: Structured output
+
+inputs:
+  contract:
+    type: string
+    required: true
+
+outputs:
+  risk:
+    type: object
+    required: true
+
+agents:
+  extract:
+    role: contract-risk-extractor
+    model:
+      provider: google
+      name: gemini-2.5-flash
+    instructions: Extract risk and severity as structured JSON.
+
+native:
+  structured_output:
+    required: true
+    mode: json_schema
+    schema:
+      type: object
+      additionalProperties: false
+      required: [risk, severity]
+      properties:
+        risk:
+          type: string
+        severity:
+          type: string
+
+graph:
+  start: extract
+  nodes:
+    extract:
+      type: agent
+      ref: extract
+    done:
+      type: end
+  edges:
+    - from: extract
+      to: done
+
+adapters:
+  schift:
+    target: workflow_v2
+    status: direct
+  vercel_ai_sdk:
+    target: generateObject
+    status: direct
+    notes:
+      - JSON Schema may be compiled to the target schema adapter.
+  google_genai:
+    target: models.generateContent
+    status: direct
+    notes:
+      - JSON Schema type names are normalized to the Gemini schema dialect.
+  langgraph_js:
+    target: StateGraph
+    status: direct

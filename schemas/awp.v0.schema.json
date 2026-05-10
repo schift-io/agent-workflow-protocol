@@ -30,6 +30,7 @@
       "type": "object",
       "additionalProperties": { "$ref": "#/$defs/tool" }
     },
+    "policies": { "$ref": "#/$defs/policies" },
     "connectors": {
       "type": "object",
       "additionalProperties": { "$ref": "#/$defs/connector" }
@@ -39,7 +40,7 @@
     "graph": { "$ref": "#/$defs/graph" },
     "adapters": {
       "type": "object",
-      "additionalProperties": { "type": "object" }
+      "additionalProperties": { "$ref": "#/$defs/adapter" }
     },
     "metadata": { "type": "object" }
   },
@@ -162,6 +163,42 @@
       },
       "additionalProperties": true
     },
+    "policies": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" }
+          },
+          "additionalProperties": true
+        },
+        "egress": {
+          "type": "object",
+          "properties": {
+            "require_allowlist": { "type": "boolean" },
+            "allowed_domains": { "type": "array", "items": { "type": "string" } }
+          },
+          "additionalProperties": true
+        },
+        "approvals": {
+          "type": "object",
+          "properties": {
+            "write_requires_approval": { "type": "boolean" },
+            "external_requires_approval": { "type": "boolean" }
+          },
+          "additionalProperties": true
+        },
+        "capabilities": {
+          "type": "object",
+          "properties": {
+            "require_bound_connectors": { "type": "boolean" }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
     "native": {
       "type": "object",
       "properties": {
@@ -247,7 +284,7 @@
       "required": ["type"],
       "properties": {
         "type": {
-          "enum": ["agent", "tool", "connector", "router", "join", "state", "human_approval", "subworkflow", "end"]
+          "enum": ["agent", "tool", "connector", "code", "router", "join", "state", "human_approval", "subworkflow", "end"]
         },
         "ref": { "type": "string" },
         "label": { "type": "string" },
@@ -280,6 +317,16 @@
           "type": "array",
           "items": { "$ref": "#/$defs/edge" }
         }
+      },
+      "additionalProperties": true
+    },
+    "adapter": {
+      "type": "object",
+      "properties": {
+        "target": { "type": "string" },
+        "status": { "enum": ["direct", "requires_runtime", "unsupported", "planned"] },
+        "runtime": { "enum": ["schift", "host", "provider", "reference"] },
+        "notes": { "type": "array", "items": { "type": "string" } }
       },
       "additionalProperties": true
     }

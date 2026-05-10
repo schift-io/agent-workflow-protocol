@@ -21,6 +21,8 @@ AWP v0.1 is a draft protocol for YAML-authored agent workflow templates.
 - `agents`: role, model, instructions, tools, connectors, child agents, and caps.
 - `tools`: named callable tools with JSON Schema-compatible input/output schemas.
 - `connectors`: named data/service connectors with read/write mode and scopes.
+- `policies`: portable safety gates for code execution, outbound egress,
+  approvals, and bound capabilities.
 - `native`: token counter, logging, trace, and audit requirements.
 - `tool_calling`: model-level tool-choice, parallelism, result-correlation, and
   tool-result completeness policy.
@@ -95,6 +97,18 @@ calls. Missing tool results are not valid successful execution.
 
 ## Adapter Expectations
 
+Adapters must classify every target mapping explicitly:
+
+- `direct`: the target SDK/runtime can execute the AWP subset without hiding
+  graph, tool, approval, or policy semantics.
+- `requires_runtime`: the target needs a host runtime such as Schift to enforce
+  retrieval bindings, approvals, writes, webhook delivery, secrets, or
+  multi-step dataflow.
+- `unsupported`: the template violates a target-visible policy or cannot be
+  represented without changing behavior.
+- `planned`: the mapping is part of the protocol roadmap but not implemented by
+  the adapter yet.
+
 LangGraph adapters should compile `graph.nodes` and `graph.edges` into a
 `StateGraph`, use subgraphs for `subworkflow`, and require a checkpointer when
 `native.audit` or `human_approval` nodes are present.
@@ -105,3 +119,15 @@ definitions and bounded multi-step calls using `generateText` or `streamText`.
 Schift adapters should map the template into managed-agent or hosted-workflow
 objects while preserving the AWP id, version, graph node ids, and native evidence
 settings.
+
+Schift Workflow v2 is the native managed-workflow target for AWP in Schift. It
+may use internal block names such as source query, webhook source, human
+approval, source write, outbound webhook, subworkflow, and code internally, but
+public YAML examples should be expressed as AWP agents, tools, connectors,
+policies, graph nodes, and adapter statuses.
+
+The conformance examples in `examples/conformance/*.awp.yaml` are the public
+contract set for adapter behavior. They cover simple LLM calls, structured
+output, tool calling, retrieval plus answer, approval-gated writes, outbound
+webhook allowlists, streaming, multi-step graphs, subworkflows, and
+policy-disabled code.

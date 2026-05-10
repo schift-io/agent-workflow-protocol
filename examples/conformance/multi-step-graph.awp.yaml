@@ -1,0 +1,51 @@
+schema: agent-workflow-protocol
+version: "0.1"
+id: multi-step-graph
+name: Multi-step graph
+
+agents:
+  classify:
+    role: classifier
+    model:
+      provider: openai
+      name: gpt-4o-mini
+    instructions: Classify the user request.
+  answer:
+    role: assistant
+    model:
+      provider: google
+      name: gemini-2.5-flash
+    instructions: Answer using the classification result.
+
+graph:
+  start: classify
+  nodes:
+    classify:
+      type: agent
+      ref: classify
+    answer:
+      type: agent
+      ref: answer
+    done:
+      type: end
+  edges:
+    - from: classify
+      to: answer
+    - from: answer
+      to: done
+
+adapters:
+  schift:
+    target: workflow_v2
+    status: direct
+  vercel_ai_sdk:
+    target: generateText
+    status: requires_runtime
+    runtime: schift
+  google_genai:
+    target: models.generateContent
+    status: requires_runtime
+    runtime: schift
+  langgraph_js:
+    target: StateGraph
+    status: direct

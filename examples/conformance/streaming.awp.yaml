@@ -1,0 +1,45 @@
+schema: agent-workflow-protocol
+version: "0.1"
+id: streaming
+name: Streaming answer
+
+agents:
+  answer:
+    role: streaming-assistant
+    model:
+      provider: openai
+      name: gpt-4o-mini
+    instructions: Stream a concise answer.
+
+native:
+  streaming:
+    enabled: true
+    persist_deltas: true
+    include_text_deltas: true
+    include_tool_call_deltas: true
+
+graph:
+  start: answer
+  nodes:
+    answer:
+      type: agent
+      ref: answer
+    done:
+      type: end
+  edges:
+    - from: answer
+      to: done
+
+adapters:
+  schift:
+    target: workflow_v2
+    status: direct
+  vercel_ai_sdk:
+    target: streamText
+    status: direct
+  google_genai:
+    target: models.generateContentStream
+    status: direct
+  langgraph_js:
+    target: stream
+    status: direct

@@ -1,0 +1,85 @@
+schema: agent-workflow-protocol
+version: "0.1"
+id: approval-write
+name: Approval gated write
+
+policies:
+  approvals:
+    write_requires_approval: true
+
+agents:
+  reviewer:
+    role: write-reviewer
+    model:
+      provider: openai
+      name: gpt-4o-mini
+    instructions: Prepare a CRM write request for approval.
+
+tools:
+  crm.write_contract:
+    kind: schift.source.write
+    description: Write a contract review record to CRM.
+    schema_format: json_schema
+    side_effect: write
+    idempotent: false
+    runtime: schift
+    execution:
+      mode: server
+      binding: crm.contracts.write
+    approval:
+      mode: always
+      checkpoint: before_crm_write
+    input_schema:
+      type: object
+      required: [contract_id, status]
+      properties:
+        contract_id:
+          type: string
+        status:
+          type: string
+
+native:
+  audit:
+    checkpoints:
+      - id: before_crm_write
+        type: pre_write
+        required: true
+
+graph:
+  start: prepare
+  nodes:
+    prepare:
+      type: agent
+      ref: reviewer
+    approve:
+      type: human_approval
+      label: Approve CRM write
+    write:
+      type: tool
+      ref: crm.write_contract
+    done:
+      type: end
+  edges:
+    - from: prepare
+      to: approve
+    - from: approve
+      to: write
+    - from: write
+      to: done
+
+adapters:
+  schift:
+    target: workflow_v2
+    status: direct
+  vercel_ai_sdk:
+    target: generateText
+    status: requires_runtime
+    runtime: schift
+  google_genai:
+    target: models.generateContent
+    status: requires_runtime
+    runtime: schift
+  langgraph_js:
+    target: StateGraph
+    status: requires_runtime
+    runtime: schift

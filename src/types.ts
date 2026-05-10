@@ -101,6 +101,23 @@ export interface AwpToolSpec {
   metadata?: Record<string, unknown>;
 }
 
+export interface AwpPolicySpec {
+  code?: {
+    enabled?: boolean;
+  };
+  egress?: {
+    require_allowlist?: boolean;
+    allowed_domains?: string[];
+  };
+  approvals?: {
+    write_requires_approval?: boolean;
+    external_requires_approval?: boolean;
+  };
+  capabilities?: {
+    require_bound_connectors?: boolean;
+  };
+}
+
 export interface AwpConnectorSpec {
   kind: string;
   source: string;
@@ -273,6 +290,7 @@ export type AwpNodeType =
   | "agent"
   | "tool"
   | "connector"
+  | "code"
   | "router"
   | "join"
   | "state"
@@ -312,6 +330,7 @@ export interface AwpTemplate {
   agents: Record<string, AwpAgentSpec>;
   tools?: Record<string, AwpToolSpec>;
   connectors?: Record<string, AwpConnectorSpec>;
+  policies?: AwpPolicySpec;
   tool_calling?: {
     default_choice?: AwpToolChoiceSpec;
     parallelism?: AwpToolParallelismSpec;
@@ -320,8 +339,22 @@ export interface AwpTemplate {
   };
   native?: AwpNativeSpec;
   graph: AwpGraphSpec;
-  adapters?: Record<string, Record<string, unknown>>;
+  adapters?: Record<string, AwpAdapterSpec>;
   metadata?: Record<string, unknown>;
+}
+
+export type AwpAdapterProjectionStatus =
+  | "direct"
+  | "requires_runtime"
+  | "unsupported"
+  | "planned";
+
+export interface AwpAdapterSpec {
+  target?: string;
+  status?: AwpAdapterProjectionStatus;
+  runtime?: "schift" | "host" | "provider" | "reference";
+  notes?: string[];
+  [key: string]: unknown;
 }
 
 export interface AwpDiagnostic {
