@@ -122,6 +122,12 @@ or host runtime exposes them.
 
 ## Quick Start
 
+Install AWP in a TypeScript or Node.js project:
+
+```bash
+npm install @schift-io/agent-workflow-protocol
+```
+
 ```bash
 npm install
 npm test
@@ -150,6 +156,14 @@ if (!result.valid) {
 The first executable target is the **reference runner**. It does not call real
 models or tools. It walks the graph and writes the standard run evidence that
 real adapters must also produce.
+
+Validate a template from an installed package:
+
+```bash
+npx @schift-io/agent-workflow-protocol validate ./workflow.awp.yaml
+```
+
+Or run the repository build directly while developing AWP:
 
 ```bash
 npm run build

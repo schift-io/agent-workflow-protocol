@@ -5,11 +5,20 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/schift-io/agent-workflow-protocol.git"
+  },
+  "homepage": "https://github.com/schift-io/agent-workflow-protocol#readme",
+  "bugs": {
+    "url": "https://github.com/schift-io/agent-workflow-protocol/issues"
+  },
   "bin": {
-    "awp": "./dist/cli.js"
+    "awp": "dist/cli.js"
   },
   "files": [
     "dist",
+    "docs",
     "schemas",
     "spec",
     "examples",
@@ -25,6 +34,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "tsc -p tsconfig.json --noEmit",
+    "prepack": "npm run build",
     "test": "npm run build && node --test test/*.test.mjs"
   },
   "keywords": [
