@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import {
   AWP_SCHEMA,
   AWP_VERSION,
@@ -128,4 +130,15 @@ test("rejects policy-disabled code conformance example", () => {
   );
 
   assert.throws(() => parseAwpYaml(source), /Code nodes are disabled by policy/);
+});
+
+test("CLI prints help for global and command help flags", () => {
+  const cli = fileURLToPath(new URL("../dist/cli.js", import.meta.url));
+  const globalHelp = execFileSync(process.execPath, [cli, "--help"], { encoding: "utf8" });
+  const commandHelp = execFileSync(process.execPath, [cli, "validate", "--help"], { encoding: "utf8" });
+
+  assert.match(globalHelp, /Usage:/);
+  assert.match(globalHelp, /awp validate/);
+  assert.match(commandHelp, /Usage:/);
+  assert.match(commandHelp, /awp run/);
 });

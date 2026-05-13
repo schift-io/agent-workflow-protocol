@@ -111,22 +111,37 @@ async function writeRunFiles(outDir: string, result: ReturnType<typeof runAwpRef
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
-  const [command, file, ...rest] = argv;
+  let command: string | undefined;
+  let file: string | undefined;
   const flags: Record<string, string | boolean> = {};
-  for (let index = 0; index < rest.length; index += 1) {
-    const token = rest[index];
-    if (!token.startsWith("--")) {
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index];
+
+    if (token === "-h") {
+      flags.h = true;
       continue;
     }
-    const key = token.slice(2);
-    const next = rest[index + 1];
-    if (!next || next.startsWith("--")) {
-      flags[key] = true;
-    } else {
-      flags[key] = next;
-      index += 1;
+
+    if (token.startsWith("--")) {
+      const key = token.slice(2);
+      const next = argv[index + 1];
+      if (!next || next.startsWith("-")) {
+        flags[key] = true;
+      } else {
+        flags[key] = next;
+        index += 1;
+      }
+      continue;
+    }
+
+    if (!command) {
+      command = token;
+    } else if (!file) {
+      file = token;
     }
   }
+
   return { command, file, flags };
 }
 
