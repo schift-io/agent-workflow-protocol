@@ -6,6 +6,8 @@ export {
 export type {
   AwpAgentSpec,
   AwpConnectorSpec,
+  AwpCostObservation,
+  AwpCostObservationSource,
   AwpDiagnostic,
   AwpEdgeSpec,
   AwpFieldSpec,
@@ -15,6 +17,9 @@ export type {
   AwpNativeSpec,
   AwpNodeSpec,
   AwpNodeType,
+  AwpQualityObservation,
+  AwpQualityObservationKind,
+  AwpQualityObservationSource,
   AwpRunArtifact,
   AwpRunEvent,
   AwpRunResult,

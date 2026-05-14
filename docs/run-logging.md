@@ -52,6 +52,8 @@ interface AwpRunEvent {
   duration_ms?: number;
   payload?: Record<string, unknown>;
   usage?: AwpTokenUsage;
+  cost?: AwpCostObservation;
+  quality?: AwpQualityObservation[];
 }
 ```
 
@@ -109,6 +111,66 @@ interface AwpTokenUsage {
 Real adapters should prefer provider or gateway counts. If a count is not
 exposed, omit the field or mark an estimate instead of presenting it as a
 provider value.
+
+## Cost and Quality Observations
+
+Adapters may record normalized cost and quality observations at event level and
+run level. These fields are optional so older logs remain valid.
+
+Use event-level observations when the value belongs to one model call, tool
+call, evaluator pass, or lifecycle event:
+
+- `cost` on `model.completed`, `tool.completed`, `token.usage`, or
+  `cost.observed`
+- `quality` on `model.completed`, `tool.completed`, `step.completed`, or
+  `quality.observed`
+
+Use run-level observations on `AwpRunResult` for aggregate totals and final
+quality summaries.
+
+Cost is normalized through `AwpCostObservation`:
+
+```ts
+interface AwpCostObservation {
+  source?: "provider" | "gateway" | "adapter_estimate" | "billing_export" | "unavailable";
+  estimated?: boolean;
+  currency?: string;
+  prompt_cost?: number;
+  completion_cost?: number;
+  reasoning_cost?: number;
+  tool_cost?: number;
+  total_cost?: number;
+}
+```
+
+Adapters should use ISO 4217 currency codes such as `USD` when the value is a
+monetary charge. If the adapter only has a pricing estimate, set
+`source: "adapter_estimate"` and `estimated: true`. Do not invent provider
+billing values when the provider or gateway did not expose them.
+
+Quality is normalized through `AwpQualityObservation`:
+
+```ts
+interface AwpQualityObservation {
+  source?: "provider" | "gateway" | "adapter" | "evaluator" | "human" | "unavailable";
+  kind?: "score" | "rating" | "pass_fail" | "label" | "metric";
+  metric: string;
+  score?: number;
+  scale_min?: number;
+  scale_max?: number;
+  passed?: boolean;
+  label?: string;
+  confidence?: number;
+  evaluator?: string;
+  notes?: string;
+  metadata?: Record<string, unknown>;
+}
+```
+
+`metric` should be portable and runtime-neutral, for example
+`schema_validity`, `faithfulness`, `tool_success`, `latency_slo`, or
+`human_rating`. Provider safety ratings, gateway evals, adapter checks, and
+human review can all be represented without adding runtime-specific fields.
 
 ## Streaming
 

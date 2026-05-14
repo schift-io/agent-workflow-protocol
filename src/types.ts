@@ -136,6 +136,8 @@ export type AwpNativeEvent =
   | "reasoning.summary"
   | "model.completed"
   | "token.usage"
+  | "cost.observed"
+  | "quality.observed"
   | "tool.call.delta"
   | "tool.started"
   | "tool.approval.requested"
@@ -197,6 +199,25 @@ export interface AwpNativeSpec {
 
 export type AwpRunStatus = "running" | "completed" | "failed" | "cancelled";
 export type AwpTokenUsageSource = "provider" | "gateway" | "adapter_estimate" | "unavailable";
+export type AwpCostObservationSource =
+  | "provider"
+  | "gateway"
+  | "adapter_estimate"
+  | "billing_export"
+  | "unavailable";
+export type AwpQualityObservationSource =
+  | "provider"
+  | "gateway"
+  | "adapter"
+  | "evaluator"
+  | "human"
+  | "unavailable";
+export type AwpQualityObservationKind =
+  | "score"
+  | "rating"
+  | "pass_fail"
+  | "label"
+  | "metric";
 
 export type AwpToolCallStatus =
   | "proposed"
@@ -219,6 +240,32 @@ export interface AwpTokenUsage {
   total_tokens?: number;
 }
 
+export interface AwpCostObservation {
+  source?: AwpCostObservationSource;
+  estimated?: boolean;
+  currency?: string;
+  prompt_cost?: number;
+  completion_cost?: number;
+  reasoning_cost?: number;
+  tool_cost?: number;
+  total_cost?: number;
+}
+
+export interface AwpQualityObservation {
+  source?: AwpQualityObservationSource;
+  kind?: AwpQualityObservationKind;
+  metric: string;
+  score?: number;
+  scale_min?: number;
+  scale_max?: number;
+  passed?: boolean;
+  label?: string;
+  confidence?: number;
+  evaluator?: string;
+  notes?: string;
+  metadata?: Record<string, unknown>;
+}
+
 export interface AwpRunEvent {
   run_id: string;
   event_id: string;
@@ -234,6 +281,8 @@ export interface AwpRunEvent {
   duration_ms?: number;
   payload?: Record<string, unknown>;
   usage?: AwpTokenUsage;
+  cost?: AwpCostObservation;
+  quality?: AwpQualityObservation[];
 }
 
 export interface AwpRunArtifact {
@@ -268,6 +317,8 @@ export interface AwpRunResult {
   intermediate_results: Record<string, unknown>;
   outputs: Record<string, unknown>;
   usage?: AwpTokenUsage;
+  cost?: AwpCostObservation;
+  quality?: AwpQualityObservation[];
 }
 
 export interface AwpToolCallRecord {
