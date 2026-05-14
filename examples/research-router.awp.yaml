@@ -122,6 +122,8 @@ native:
       - reasoning.summary
       - model.completed
       - token.usage
+      - cost.observed
+      - quality.observed
       - tool.call.delta
       - tool.started
       - tool.completed

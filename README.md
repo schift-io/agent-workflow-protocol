@@ -30,6 +30,7 @@ validator, supported-target metadata, and SDK mapping rules.
 | Structural validation | Implemented |
 | Tool-calling normalization spec | Implemented |
 | Native token/log/audit evidence spec | Implemented |
+| Cost and quality observation persistence | Implemented |
 | Runtime adapters | Planned |
 | Reference runner | Implemented |
 
@@ -112,6 +113,7 @@ AWP does not treat observability as an afterthought. Templates can require:
 - streaming deltas
 - structured output artifacts
 - provider-exposed reasoning summaries
+- optional cost and quality observations
 - approval events
 - intermediate audit checkpoints
 
@@ -172,6 +174,16 @@ node dist/cli.js run examples/research-router.awp.yaml \
   --input '{"query":"How should logs work?"}'
 ```
 
+Adapters that already have pricing or evaluator output can pass portable
+observations through the reference persistence path:
+
+```bash
+node dist/cli.js run examples/research-router.awp.yaml \
+  --target reference \
+  --cost '{"source":"adapter_estimate","estimated":true,"currency":"USD","total_cost":0.0020515}' \
+  --quality '[{"source":"evaluator","kind":"score","metric":"faithfulness","score":90,"scale_min":0,"scale_max":100,"passed":true}]'
+```
+
 Output:
 
 ```text
@@ -193,11 +205,17 @@ The run directory contains:
 └── intermediate-results.json
 ```
 
-`events.jsonl` includes lifecycle, model, streaming, tool, token, audit, and
-duration events. `artifacts.json` includes intermediate results, normalized tool
-results, structured outputs, reasoning summaries, audit decisions, and the final
-output. This is the debugging surface Schift API/UI and SDK adapters should read
-instead of scraping provider-specific logs.
+`events.jsonl` includes lifecycle, model, streaming, tool, token, optional
+cost/quality, audit, and duration events. `run.json` carries aggregate usage and
+any aggregate cost/quality observations that were supplied by the adapter.
+`artifacts.json` includes intermediate results, normalized tool results,
+structured outputs, reasoning summaries, audit decisions, and the final output.
+This is the debugging surface Schift API/UI and SDK adapters should read instead
+of scraping provider-specific logs.
+
+See `examples/run-observations/cost-quality/` for a compact persisted fixture
+with `token.usage`, `cost.observed`, `quality.observed`, and aggregate
+run-level cost/quality.
 
 ## Minimal Template
 
@@ -280,6 +298,8 @@ native:
       - reasoning.summary
       - model.completed
       - token.usage
+      - cost.observed
+      - quality.observed
       - tool.call.delta
       - tool.started
       - tool.completed

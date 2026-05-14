@@ -128,6 +128,24 @@ call, evaluator pass, or lifecycle event:
 Use run-level observations on `AwpRunResult` for aggregate totals and final
 quality summaries.
 
+The reference CLI accepts explicit observations and persists them end-to-end:
+
+```bash
+awp run examples/research-router.awp.yaml \
+  --target reference \
+  --cost '{"source":"adapter_estimate","estimated":true,"currency":"USD","total_cost":0.0020515}' \
+  --quality '[{"source":"evaluator","kind":"score","metric":"faithfulness","score":90,"scale_min":0,"scale_max":100,"passed":true}]'
+```
+
+If these values are unavailable, adapters should omit them. Token counts must
+not be converted into cost unless the adapter has an explicit pricing source and
+marks the result as estimated.
+
+`examples/run-observations/cost-quality/` contains a compact persisted fixture
+where `events.jsonl` includes `token.usage`, `cost.observed`, and
+`quality.observed`, while `run.json` carries the aggregate run-level
+observations.
+
 Cost is normalized through `AwpCostObservation`:
 
 ```ts

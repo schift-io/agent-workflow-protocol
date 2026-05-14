@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readdirSync, readFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import {
@@ -95,6 +97,142 @@ test("reference runner emits run ids, logs, and intermediate artifacts", () => {
   assert.ok(result.artifacts.some((artifact) => artifact.kind === "reasoning_summary"));
   assert.ok(result.artifacts.some((artifact) => artifact.kind === "final_output"));
   assert.ok(result.intermediate_results.memory);
+  assert.equal(result.cost, undefined);
+  assert.equal(result.quality, undefined);
+  assert.equal(result.events.some((event) => event.type === "cost.observed"), false);
+  assert.equal(result.events.some((event) => event.type === "quality.observed"), false);
+});
+
+test("reference runner carries explicit cost and quality observations to completion", () => {
+  const source = readFileSync(new URL("../examples/conformance/simple-llm.awp.yaml", import.meta.url), "utf8");
+  const template = parseAwpYaml(source);
+  const cost = {
+    source: "adapter_estimate",
+    estimated: true,
+    currency: "USD",
+    prompt_cost: 0.0012,
+    completion_cost: 0.0008515,
+    total_cost: 0.0020515,
+  };
+  const quality = [
+    {
+      source: "evaluator",
+      kind: "score",
+      metric: "faithfulness",
+      score: 90,
+      scale_min: 0,
+      scale_max: 100,
+      passed: true,
+      evaluator: "reference-smoke",
+      notes: "Answer is aligned with the supplied passage.",
+    },
+    {
+      source: "adapter",
+      kind: "pass_fail",
+      metric: "schema_validity",
+      passed: true,
+    },
+  ];
+
+  const result = runAwpReference(template, {
+    runId: "awp_run_observations_test",
+    input: { query: "one nonfiction question" },
+    now: () => new Date("2026-05-14T00:00:00.000Z"),
+    cost,
+    quality,
+  });
+
+  assert.deepEqual(result.cost, cost);
+  assert.deepEqual(result.quality, quality);
+  assert.ok(result.events.some((event) => event.type === "token.usage" && event.usage?.total_tokens));
+
+  const costEvent = result.events.find((event) => event.type === "cost.observed");
+  assert.deepEqual(costEvent?.cost, cost);
+  assert.equal(costEvent?.payload?.source, "adapter_estimate");
+
+  const qualityEvent = result.events.find((event) => event.type === "quality.observed");
+  assert.deepEqual(qualityEvent?.quality, quality);
+  assert.deepEqual(qualityEvent?.payload?.metrics, ["faithfulness", "schema_validity"]);
+
+  const completionEvent = result.events.find((event) => event.type === "run.completed");
+  assert.deepEqual(completionEvent?.cost, cost);
+  assert.deepEqual(completionEvent?.quality, quality);
+});
+
+test("CLI persists cost and quality observations in run files", () => {
+  const cli = fileURLToPath(new URL("../dist/cli.js", import.meta.url));
+  const workflow = fileURLToPath(new URL("../examples/conformance/simple-llm.awp.yaml", import.meta.url));
+  const outDir = mkdtempSync(join(tmpdir(), "awp-observations-"));
+  const cost = {
+    source: "adapter_estimate",
+    estimated: true,
+    currency: "USD",
+    total_cost: 0.0020515,
+  };
+  const quality = [{
+    source: "evaluator",
+    kind: "score",
+    metric: "distractor_quality",
+    score: 72,
+    scale_min: 0,
+    scale_max: 100,
+    passed: true,
+  }];
+
+  try {
+    const output = execFileSync(process.execPath, [
+      cli,
+      "run",
+      workflow,
+      "--target",
+      "reference",
+      "--input",
+      JSON.stringify({ query: "one nonfiction question" }),
+      "--cost",
+      JSON.stringify(cost),
+      "--quality",
+      JSON.stringify(quality),
+      "--out",
+      outDir,
+      "--json",
+    ], { encoding: "utf8" });
+    const summary = JSON.parse(output);
+
+    assert.equal(summary.has_cost, true);
+    assert.equal(summary.quality_count, 1);
+
+    const run = JSON.parse(readFileSync(join(outDir, "run.json"), "utf8"));
+    const events = readFileSync(join(outDir, "events.jsonl"), "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+
+    assert.deepEqual(run.cost, cost);
+    assert.deepEqual(run.quality, quality);
+    assert.ok(events.some((event) => event.type === "token.usage" && event.usage?.total_tokens));
+    assert.ok(events.some((event) => event.type === "cost.observed" && event.cost?.total_cost === 0.0020515));
+    assert.ok(events.some((event) => event.type === "quality.observed" && event.quality?.[0]?.metric === "distractor_quality"));
+  } finally {
+    rmSync(outDir, { recursive: true, force: true });
+  }
+});
+
+test("cost and quality observation fixture stays portable", () => {
+  const fixtureDir = new URL("../examples/run-observations/cost-quality/", import.meta.url);
+  const run = JSON.parse(readFileSync(new URL("run.json", fixtureDir), "utf8"));
+  const events = readFileSync(new URL("events.jsonl", fixtureDir), "utf8")
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+
+  assert.deepEqual(run.events, events);
+  assert.ok(events.some((event) => event.type === "token.usage"));
+  assert.ok(events.some((event) => event.type === "cost.observed"));
+  assert.ok(events.some((event) => event.type === "quality.observed"));
+  assert.equal(run.cost.source, "adapter_estimate");
+  assert.equal(run.cost.estimated, true);
+  assert.ok(run.quality.some((observation) => observation.metric === "faithfulness"));
+  assert.ok(run.quality.some((observation) => observation.metric === "distractor_quality"));
 });
 
 test("validates public conformance AWP YAML examples", () => {

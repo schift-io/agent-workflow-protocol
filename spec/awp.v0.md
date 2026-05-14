@@ -44,6 +44,8 @@ Runtimes that claim native AWP support should emit comparable events:
 - `reasoning.summary`
 - `model.completed`
 - `token.usage`
+- `cost.observed`
+- `quality.observed`
 - `tool.call.delta`
 - `tool.started`
 - `tool.completed`
@@ -67,6 +69,14 @@ Token counters should use the same field names across runtimes:
 Completed events should include `duration_ms` when the runtime can measure it.
 Model events should include provider/name settings and provider response ids when
 available.
+
+Cost and quality observations are optional. When present, runtimes should emit
+`cost.observed` or `quality.observed` events and carry aggregate observations on
+the completed run result. Provider or gateway values should be marked by source;
+host-calculated pricing must use `adapter_estimate` with `estimated: true`.
+Portable quality metric names should be runtime-neutral, for example
+`faithfulness`, `schema_validity`, `distractor_quality`, `human_rating`, or
+`latency_slo`.
 
 Structured outputs should be persisted as `structured_output` artifacts.
 Reasoning evidence should use provider summaries, redacted traces, or metadata;

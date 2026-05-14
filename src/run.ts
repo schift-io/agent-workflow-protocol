@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
 import type {
+  AwpCostObservation,
   AwpModelRef,
   AwpNativeEvent,
+  AwpQualityObservation,
   AwpRunArtifact,
   AwpRunEvent,
   AwpRunResult,
@@ -16,6 +18,8 @@ export interface RunAwpReferenceOptions {
   now?: () => Date;
   runId?: string;
   target?: "reference";
+  cost?: AwpCostObservation;
+  quality?: AwpQualityObservation[];
 }
 
 interface RuntimeState {
@@ -88,13 +92,33 @@ export function runAwpReference(
   const usage = aggregateUsage(state.events
     .filter((event) => event.type === "token.usage")
     .map((event) => event.usage));
+  if (options.cost) {
+    emit(state, "cost.observed", {
+      scope: "run",
+      source: options.cost.source,
+      estimated: options.cost.estimated,
+      currency: options.cost.currency,
+      total_cost: options.cost.total_cost,
+    }, undefined, undefined, undefined, undefined, undefined, undefined, options.cost);
+  }
+
+  if (options.quality?.length) {
+    emit(state, "quality.observed", {
+      scope: "run",
+      metric_count: options.quality.length,
+      metrics: options.quality.map((observation) => observation.metric),
+    }, undefined, undefined, undefined, undefined, undefined, undefined, undefined, options.quality);
+  }
+
+  const cost = aggregateCost(state.events.map((event) => event.cost));
+  const quality = aggregateQuality(state.events.map((event) => event.quality));
   emit(state, "run.completed", {
     status: "completed",
     artifact_count: state.artifacts.length,
     event_count: state.events.length + 1,
     duration_ms: durationMs,
     model_invocation_count: state.events.filter((event) => event.type === "model.started").length,
-  }, undefined, undefined, undefined, undefined, usage, durationMs);
+  }, undefined, undefined, undefined, undefined, usage, durationMs, cost, quality);
 
   return {
     run_id: state.runId,
@@ -109,6 +133,8 @@ export function runAwpReference(
     intermediate_results: state.intermediateResults,
     outputs: state.outputs,
     usage,
+    ...(cost ? { cost } : {}),
+    ...(quality ? { quality } : {}),
   };
 }
 
@@ -429,6 +455,8 @@ function emit(
   artifactId?: string,
   usage?: AwpTokenUsage,
   durationMs?: number,
+  cost?: AwpCostObservation,
+  quality?: AwpQualityObservation[],
 ): AwpRunEvent {
   state.sequence += 1;
   const event: AwpRunEvent = {
@@ -446,6 +474,8 @@ function emit(
     duration_ms: durationMs,
     payload,
     usage,
+    cost,
+    quality,
   };
   state.events.push(event);
   return event;
@@ -570,9 +600,48 @@ function aggregateUsage(usages: Array<AwpTokenUsage | undefined>): AwpTokenUsage
   };
 }
 
+function aggregateCost(costs: Array<AwpCostObservation | undefined>): AwpCostObservation | undefined {
+  const known = costs.filter((cost): cost is AwpCostObservation => cost !== undefined);
+  if (known.length === 0) {
+    return undefined;
+  }
+  if (known.length === 1) {
+    return known[0];
+  }
+
+  const currencies = new Set(known.map((cost) => cost.currency).filter((currency): currency is string => !!currency));
+  return {
+    source: known.every((cost) => cost.source === known[0].source) ? known[0].source : "adapter_estimate",
+    estimated: known.some((cost) => cost.estimated === true || cost.source === "adapter_estimate"),
+    currency: currencies.size === 1 ? [...currencies][0] : undefined,
+    prompt_cost: sumCostField(known, "prompt_cost"),
+    completion_cost: sumCostField(known, "completion_cost"),
+    reasoning_cost: sumCostField(known, "reasoning_cost"),
+    tool_cost: sumCostField(known, "tool_cost"),
+    total_cost: sumCostField(known, "total_cost"),
+  };
+}
+
+function aggregateQuality(
+  qualityLists: Array<AwpQualityObservation[] | undefined>,
+): AwpQualityObservation[] | undefined {
+  const observations = qualityLists.flatMap((quality) => quality ?? []);
+  return observations.length > 0 ? observations : undefined;
+}
+
 function sumUsageField(usages: AwpTokenUsage[], field: keyof AwpTokenUsage): number | undefined {
   const values = usages
     .map((usage) => usage[field])
+    .filter((value): value is number => typeof value === "number");
+  if (values.length === 0) {
+    return undefined;
+  }
+  return values.reduce((sum, value) => sum + value, 0);
+}
+
+function sumCostField(costs: AwpCostObservation[], field: keyof AwpCostObservation): number | undefined {
+  const values = costs
+    .map((cost) => cost[field])
     .filter((value): value is number => typeof value === "number");
   if (values.length === 0) {
     return undefined;

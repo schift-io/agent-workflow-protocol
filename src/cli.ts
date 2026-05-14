@@ -7,6 +7,10 @@ import {
   runAwpReference,
   validateAwpTemplate,
 } from "./index.js";
+import type {
+  AwpCostObservation,
+  AwpQualityObservation,
+} from "./types.js";
 
 interface ParsedArgs {
   command?: string;
@@ -62,7 +66,14 @@ async function runCommand(args: ParsedArgs): Promise<void> {
 
   const template = readTemplate(requireFile(args));
   const input = typeof args.flags.input === "string" ? JSON.parse(args.flags.input) : {};
-  const result = runAwpReference(template, { input, target: "reference" });
+  const cost = parseCostFlag(args.flags.cost);
+  const quality = parseQualityFlag(args.flags.quality);
+  const result = runAwpReference(template, {
+    input,
+    target: "reference",
+    ...(cost ? { cost } : {}),
+    ...(quality ? { quality } : {}),
+  });
   const outDir = String(args.flags.out ?? join(".awp-runs", result.run_id));
 
   await writeRunFiles(outDir, result);
@@ -73,6 +84,8 @@ async function runCommand(args: ParsedArgs): Promise<void> {
     target: result.target,
     event_count: result.events.length,
     artifact_count: result.artifacts.length,
+    has_cost: result.cost !== undefined,
+    quality_count: result.quality?.length ?? 0,
     run_path: join(outDir, "run.json"),
     log_path: join(outDir, "events.jsonl"),
     artifacts_path: join(outDir, "artifacts.json"),
@@ -85,6 +98,12 @@ async function runCommand(args: ParsedArgs): Promise<void> {
     console.log(`status: ${summary.status}`);
     console.log(`events: ${summary.event_count}`);
     console.log(`artifacts: ${summary.artifact_count}`);
+    if (summary.has_cost) {
+      console.log(`cost: recorded`);
+    }
+    if (summary.quality_count > 0) {
+      console.log(`quality: ${summary.quality_count}`);
+    }
     console.log(`log: ${summary.log_path}`);
     console.log(`summary: ${summary.run_path}`);
   }
@@ -99,6 +118,48 @@ function requireFile(args: ParsedArgs): string {
 
 function readTemplate(path: string) {
   return parseAwpYaml(readFileSync(path, "utf8"));
+}
+
+function parseCostFlag(value: string | boolean | undefined): AwpCostObservation | undefined {
+  const parsed = parseJsonFlag(value, "cost");
+  if (parsed === undefined) {
+    return undefined;
+  }
+  if (!isRecord(parsed)) {
+    throw new Error("--cost must be a JSON object");
+  }
+  return parsed as AwpCostObservation;
+}
+
+function parseQualityFlag(value: string | boolean | undefined): AwpQualityObservation[] | undefined {
+  const parsed = parseJsonFlag(value, "quality");
+  if (parsed === undefined) {
+    return undefined;
+  }
+
+  const observations = Array.isArray(parsed) ? parsed : [parsed];
+  if (!observations.every(isQualityObservation)) {
+    throw new Error("--quality must be a JSON object or array of objects with non-empty metric fields");
+  }
+  return observations;
+}
+
+function parseJsonFlag(value: string | boolean | undefined, flagName: string): unknown {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value === "boolean") {
+    throw new Error(`--${flagName} requires a JSON value`);
+  }
+  return JSON.parse(value);
+}
+
+function isQualityObservation(value: unknown): value is AwpQualityObservation {
+  return isRecord(value) && typeof value.metric === "string" && value.metric.length > 0;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 async function writeRunFiles(outDir: string, result: ReturnType<typeof runAwpReference>): Promise<void> {
@@ -150,7 +211,7 @@ function printHelp(): void {
 
 Usage:
   awp validate <workflow.awp.yaml> [--json]
-  awp run <workflow.awp.yaml> [--target reference] [--input '{"query":"..."}'] [--out .awp-runs/<id>] [--json]
+  awp run <workflow.awp.yaml> [--target reference] [--input '{"query":"..."}'] [--cost '{...}'] [--quality '[...]'] [--out .awp-runs/<id>] [--json]
 
 Targets:
   reference  Protocol reference runner. Emits run_id, events.jsonl, artifacts, and intermediate results without calling real models or tools.
