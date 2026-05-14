@@ -71,3 +71,15 @@ export {
 export type {
   RunAwpReferenceOptions,
 } from "./run.js";
+
+export {
+  AWP_COMPANION_ADAPTER_IDS,
+  classifyAwpAdapterProjection,
+  classifyAwpAdapters,
+  normalizeAwpAdapterId,
+} from "./adapters/classification.js";
+
+export type {
+  AwpAdapterClassification,
+  AwpCompanionAdapterId,
+} from "./adapters/classification.js";

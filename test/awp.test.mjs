@@ -9,6 +9,7 @@ import {
   AWP_SCHEMA,
   AWP_VERSION,
   SUPPORTED_SDK_TARGETS,
+  classifyAwpAdapterProjection,
   parseAwpYaml,
   runAwpReference,
   stringifyAwpYaml,
@@ -67,6 +68,59 @@ test("exposes supported SDK targets", () => {
       "mcp-tools",
     ],
   );
+});
+
+test("classifies direct adapters and runtime-required projections", () => {
+  const conformanceDir = new URL("../examples/conformance/", import.meta.url);
+  const simple = parseAwpYaml(readFileSync(new URL("simple-llm.awp.yaml", conformanceDir), "utf8"));
+  const approval = parseAwpYaml(readFileSync(new URL("approval-write.awp.yaml", conformanceDir), "utf8"));
+  const multiStep = parseAwpYaml(readFileSync(new URL("multi-step-graph.awp.yaml", conformanceDir), "utf8"));
+
+  const vercel = classifyAwpAdapterProjection(simple, "vercel-ai");
+  assert.equal(vercel.adapter, "vercel_ai_sdk");
+  assert.equal(vercel.status, "direct");
+  assert.equal(vercel.source, "declared");
+  assert.equal(vercel.target, "generateText");
+  assert.equal(vercel.direct, true);
+  assert.equal(vercel.requiresRuntime, false);
+  assert.equal(vercel.supported, true);
+
+  assert.equal(
+    classifyAwpAdapterProjection(approval, "google-genai").requiresRuntime,
+    true,
+  );
+
+  const inferred = {
+    ...multiStep,
+    adapters: undefined,
+  };
+  assert.equal(
+    classifyAwpAdapterProjection(inferred, "vercel-ai").requiresRuntime,
+    true,
+  );
+  assert.equal(
+    classifyAwpAdapterProjection(inferred, "langgraph").direct,
+    true,
+  );
+});
+
+test("exposes bundled adapter subpath modules", async () => {
+  const [
+    { asVercelAI },
+    { asGoogleGenAI },
+    { asLangGraph },
+    { classifyAwpAdapterProjection: classifyFromSubpath },
+  ] = await Promise.all([
+    import("@schift-io/agent-workflow-protocol/adapters/vercel-ai"),
+    import("@schift-io/agent-workflow-protocol/adapters/google-genai"),
+    import("@schift-io/agent-workflow-protocol/adapters/langgraph"),
+    import("@schift-io/agent-workflow-protocol/adapters/classification"),
+  ]);
+
+  assert.equal(typeof asVercelAI, "function");
+  assert.equal(typeof asGoogleGenAI, "function");
+  assert.equal(typeof asLangGraph, "function");
+  assert.equal(typeof classifyFromSubpath, "function");
 });
 
 test("reference runner emits run ids, logs, and intermediate artifacts", () => {

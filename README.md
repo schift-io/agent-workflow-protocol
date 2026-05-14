@@ -40,6 +40,33 @@ Schift Workflow v2 is the Schift-native managed-workflow target for these AWP
 templates; internal Schift block names are implementation details, not the
 public YAML contract.
 
+## Companion Adapters
+
+The main package exposes convenience subpaths for the bundled projection
+adapters:
+
+```ts
+import { asVercelAI } from "@schift-io/agent-workflow-protocol/adapters/vercel-ai";
+import { asGoogleGenAI } from "@schift-io/agent-workflow-protocol/adapters/google-genai";
+import { asLangGraph } from "@schift-io/agent-workflow-protocol/adapters/langgraph";
+```
+
+Use `classifyAwpAdapterProjection()` before projection to keep the direct
+adapter/runtime boundary explicit:
+
+```ts
+import {
+  classifyAwpAdapterProjection,
+} from "@schift-io/agent-workflow-protocol";
+
+const status = classifyAwpAdapterProjection(template, "vercel-ai");
+
+if (status.requiresRuntime) {
+  // Hand the workflow to the Schift/local runtime instead of forcing a
+  // side-effecting graph through a single-call SDK adapter.
+}
+```
+
 ## Why AWP Exists
 
 Agent frameworks all describe similar ideas with different shapes:

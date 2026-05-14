@@ -1,6 +1,6 @@
 {
   "name": "@schift-io/agent-workflow-protocol",
-  "version": "0.1.3",
+  "version": "0.1.5",
   "description": "AWP: a YAML-first protocol for portable agent workflows.",
   "type": "module",
   "main": "./dist/index.js",
@@ -20,6 +20,7 @@
     "dist",
     "docs",
     "schemas",
+    "scripts",
     "spec",
     "examples",
     "README.md",
@@ -29,12 +30,34 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./adapters": {
+      "import": "./dist/adapters/index.js",
+      "types": "./dist/adapters/index.d.ts"
+    },
+    "./adapters/classification": {
+      "import": "./dist/adapters/classification.js",
+      "types": "./dist/adapters/classification.d.ts"
+    },
+    "./adapters/google-genai": {
+      "import": "./dist/adapters/google-genai.js",
+      "types": "./dist/adapters/google-genai.d.ts"
+    },
+    "./adapters/langgraph": {
+      "import": "./dist/adapters/langgraph.js",
+      "types": "./dist/adapters/langgraph.d.ts"
+    },
+    "./adapters/vercel-ai": {
+      "import": "./dist/adapters/vercel-ai.js",
+      "types": "./dist/adapters/vercel-ai.d.ts"
     }
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "tsc -p tsconfig.json --noEmit",
     "prepack": "npm run build",
+    "release:npm": "node scripts/release-npm.mjs",
+    "smoke:install": "node scripts/smoke-install.mjs",
     "test": "npm run build && node --test test/*.test.mjs"
   },
   "keywords": [
