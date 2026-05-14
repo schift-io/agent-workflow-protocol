@@ -17,10 +17,11 @@ name: Research router
 
 AWP v0.1 is a draft contract.
 
-Compatibility has been checked at the **protocol and documentation level** against
-the official SDK/runtime surfaces listed below. Runtime adapters are not shipped
-yet, so this repo currently proves the shared YAML shape, schema, parser,
-validator, supported-target metadata, and SDK mapping rules.
+Compatibility has been checked against the official SDK/runtime surfaces listed
+below. Installing `@schift-io/agent-workflow-protocol` also installs the Schift
+SDK and the current companion projection adapters for Vercel AI SDK, Google Gen
+AI, and LangGraph.js. The protocol package still owns the portable YAML shape,
+schema, parser, validator, supported-target metadata, and SDK mapping rules.
 
 | Area | Status |
 | --- | --- |
@@ -31,7 +32,7 @@ validator, supported-target metadata, and SDK mapping rules.
 | Tool-calling normalization spec | Implemented |
 | Native token/log/audit evidence spec | Implemented |
 | Cost and quality observation persistence | Implemented |
-| Runtime adapters | Planned |
+| Companion npm adapters | Shipped |
 | Reference runner | Implemented |
 
 The public conformance YAML set lives in `examples/conformance/*.awp.yaml`.
