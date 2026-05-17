@@ -21,6 +21,13 @@
         ]
       }
     },
+    "data_sources": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/dataSource" }
+    },
+    "input_mapping_contract": { "$ref": "#/$defs/inputMappingContract" },
+    "quality_contract": { "$ref": "#/$defs/qualityContract" },
+    "output_contract": { "$ref": "#/$defs/outputContract" },
     "agents": {
       "type": "object",
       "minProperties": 1,
@@ -163,6 +170,51 @@
       },
       "additionalProperties": true
     },
+    "dataSource": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": { "enum": ["api", "connector", "file", "inline", "runtime"] },
+        "description": { "type": "string" },
+        "schema_format": {
+          "enum": ["json_schema", "openapi_schema", "zod_adapter", "mcp_tool"]
+        },
+        "input_schema": { "type": "object" },
+        "return_schema": { "type": "object" },
+        "api": {
+          "type": "object",
+          "required": ["endpoint"],
+          "properties": {
+            "endpoint": { "type": "string", "minLength": 1 },
+            "method": { "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"] },
+            "headers": {
+              "type": "object",
+              "additionalProperties": { "type": "string" }
+            },
+            "query": {
+              "type": "object",
+              "additionalProperties": { "type": "string" }
+            },
+            "body_schema": { "type": "object" },
+            "auth": { "enum": ["none", "api_key", "bearer", "oauth", "runtime"] },
+            "timeout_ms": { "type": "integer", "exclusiveMinimum": 0 }
+          },
+          "additionalProperties": true
+        },
+        "cache": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "ttl_seconds": { "type": "integer", "minimum": 0 },
+            "key_fields": { "type": "array", "items": { "type": "string" } }
+          },
+          "additionalProperties": true
+        },
+        "maps_to": { "type": "array", "items": { "type": "string" } },
+        "metadata": { "type": "object" }
+      },
+      "additionalProperties": true
+    },
     "policies": {
       "type": "object",
       "properties": {
@@ -195,6 +247,156 @@
             "require_bound_connectors": { "type": "boolean" }
           },
           "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "blockingIssue": {
+      "type": "object",
+      "required": ["code", "message"],
+      "properties": {
+        "code": { "type": "string", "pattern": "^[a-z][a-z0-9_.-]*$" },
+        "message": { "type": "string", "minLength": 1 },
+        "field": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "inputMappingContract": {
+      "type": "object",
+      "required": ["normalized_output"],
+      "properties": {
+        "raw_fields": { "$ref": "#/$defs/fields" },
+        "intent_resolution": {
+          "type": "object",
+          "properties": {
+            "task_kinds": { "type": "array", "items": { "type": "string" } },
+            "source_modes": { "type": "array", "items": { "type": "string" } },
+            "passage_modes": { "type": "array", "items": { "type": "string" } },
+            "missing_inputs": { "type": "array", "items": { "type": "string" } },
+            "assumptions": { "type": "array", "items": { "type": "string" } }
+          },
+          "additionalProperties": true
+        },
+        "defaults": { "type": "object" },
+        "clamps": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "min": { "type": "number" },
+              "max": { "type": "number" }
+            },
+            "additionalProperties": true
+          }
+        },
+        "routing_gates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["code", "condition", "entry_node", "reason"],
+            "properties": {
+              "code": { "type": "string", "pattern": "^[a-z][a-z0-9_.-]*$" },
+              "condition": { "type": "string", "minLength": 1 },
+              "entry_node": { "type": "string", "minLength": 1 },
+              "reason": { "type": "string", "minLength": 1 }
+            },
+            "additionalProperties": true
+          }
+        },
+        "blocking_rules": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/blockingIssue" }
+        },
+        "normalized_output": {
+          "type": "object",
+          "required": ["normalized_input", "route_decision", "validation"],
+          "properties": {
+            "normalized_input": { "$ref": "#/$defs/fields" },
+            "route_decision": {
+              "type": "object",
+              "required": ["entry_node"],
+              "properties": {
+                "awp_id": { "type": "string" },
+                "entry_node": { "type": "string", "minLength": 1 },
+                "reason": { "type": "string" }
+              },
+              "additionalProperties": true
+            },
+            "validation": {
+              "type": "object",
+              "properties": {
+                "blocking_issue_codes": {
+                  "type": "array",
+                  "items": { "type": "string", "pattern": "^[a-z][a-z0-9_.-]*$" }
+                },
+                "assumptions": { "type": "array", "items": { "type": "string" } },
+                "user_facing_prompt_fields": { "type": "array", "items": { "type": "string" } }
+              },
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "qualityContract": {
+      "type": "object",
+      "required": ["mode", "targets"],
+      "properties": {
+        "mode": { "enum": ["blocking", "advisory"] },
+        "targets": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["artifact", "checks"],
+            "properties": {
+              "artifact": { "type": "string", "minLength": 1 },
+              "checks": { "type": "array", "minItems": 1, "items": { "type": "string" } }
+            },
+            "additionalProperties": true
+          }
+        },
+        "required_evidence": { "type": "array", "items": { "type": "string" } },
+        "retry_policy": {
+          "type": "object",
+          "properties": {
+            "normal_attempts": { "type": "integer", "minimum": 0 },
+            "agentic_extra_attempts": { "type": "integer", "minimum": 0 },
+            "retry_input": { "enum": ["issues_and_suggestions", "failed_artifact", "custom"] },
+            "no_graph_cycle": { "const": true }
+          },
+          "additionalProperties": true
+        },
+        "result_shape": {
+          "type": "object",
+          "properties": {
+            "score_required": { "type": "boolean" },
+            "metrics": { "type": "array", "items": { "type": "string" } },
+            "blocking_issue_codes": {
+              "type": "array",
+              "items": { "type": "string", "pattern": "^[a-z][a-z0-9_.-]*$" }
+            },
+            "retry_hints_required": { "type": "boolean" }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "outputContract": {
+      "type": "object",
+      "required": ["required_fields"],
+      "properties": {
+        "required_fields": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+        "required_metadata": { "type": "array", "items": { "type": "string" } },
+        "include_qc_summary": { "type": "boolean" },
+        "include_usage": { "type": "boolean" },
+        "include_protocol_metadata": { "type": "boolean" },
+        "blocking_rules": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/blockingIssue" }
         }
       },
       "additionalProperties": true
@@ -284,7 +486,7 @@
       "required": ["type"],
       "properties": {
         "type": {
-          "enum": ["agent", "tool", "connector", "code", "router", "join", "state", "human_approval", "subworkflow", "end"]
+          "enum": ["agent", "tool", "connector", "code", "data_source", "validate", "guard", "qc", "router", "join", "state", "human_approval", "subworkflow", "end"]
         },
         "ref": { "type": "string" },
         "label": { "type": "string" },

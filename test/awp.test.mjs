@@ -297,6 +297,7 @@ test("validates public conformance AWP YAML examples", () => {
 
   assert.deepEqual(files, [
     "approval-write.awp.yaml",
+    "contract-gates.awp.yaml",
     "multi-step-graph.awp.yaml",
     "outbound-webhook.awp.yaml",
     "retrieval-answer.awp.yaml",
@@ -313,6 +314,81 @@ test("validates public conformance AWP YAML examples", () => {
     assert.equal(result.valid, true, `${file}: ${JSON.stringify(result.diagnostics)}`);
     assert.equal(template.adapters?.schift?.target, "workflow_v2", file);
   }
+});
+
+test("validates input, data source, QC, and output contracts", () => {
+  const template = parseAwpYaml(
+    readFileSync(new URL("../examples/conformance/contract-gates.awp.yaml", import.meta.url), "utf8"),
+  );
+
+  assert.equal(template.data_sources?.source_record?.api?.endpoint, "https://api.example.com/v1/records/{record_id}");
+  assert.equal(template.input_mapping_contract?.normalized_output.route_decision.entry_node, "map_input");
+  assert.equal(template.quality_contract?.retry_policy?.no_graph_cycle, true);
+  assert.equal(template.output_contract?.required_fields.includes("qc_summary"), true);
+
+  const result = validateAwpTemplate(template);
+  assert.equal(result.valid, true, JSON.stringify(result.diagnostics));
+});
+
+test("rejects invalid contract shapes before runtime", () => {
+  const template = {
+    schema: AWP_SCHEMA,
+    version: AWP_VERSION,
+    id: "invalid-contracts",
+    name: "Invalid contracts",
+    outputs: {
+      result: { type: "object", required: true },
+    },
+    data_sources: {
+      record: {
+        kind: "api",
+        api: { endpoint: "/records/{id}" },
+      },
+    },
+    input_mapping_contract: {
+      blocking_rules: [{ code: "MissingInput", message: "Missing input." }],
+      normalized_output: {
+        normalized_input: {
+          request: { type: "string", required: true },
+        },
+        route_decision: { entry_node: "missing_node" },
+        validation: { blocking_issue_codes: ["MissingInput"] },
+      },
+    },
+    quality_contract: {
+      mode: "blocking",
+      targets: [{ artifact: "draft", checks: ["schema_validity"] }],
+      retry_policy: { normal_attempts: -1, no_graph_cycle: false },
+      result_shape: { blocking_issue_codes: ["BadCode"] },
+    },
+    output_contract: {
+      required_fields: ["unknown_result"],
+      blocking_rules: [{ code: "result_missing", message: "" }],
+    },
+    agents: {
+      generate: { role: "generator" },
+    },
+    graph: {
+      start: "start",
+      nodes: {
+        start: { type: "validate" },
+        generate: { type: "agent", ref: "generate" },
+      },
+      edges: [
+        { from: "start", to: "generate" },
+      ],
+    },
+  };
+
+  const result = validateAwpTemplate(template);
+  assert.equal(result.valid, false);
+  assert.ok(result.diagnostics.some((diagnostic) => diagnostic.path === "data_sources.record.return_schema"));
+  assert.ok(result.diagnostics.some((diagnostic) => diagnostic.path === "input_mapping_contract.blocking_rules.0.code"));
+  assert.ok(result.diagnostics.some((diagnostic) => diagnostic.path === "input_mapping_contract.normalized_output.route_decision.entry_node"));
+  assert.ok(result.diagnostics.some((diagnostic) => diagnostic.path === "quality_contract.retry_policy.no_graph_cycle"));
+  assert.ok(result.diagnostics.some((diagnostic) => diagnostic.path === "quality_contract.retry_policy.normal_attempts"));
+  assert.ok(result.diagnostics.some((diagnostic) => diagnostic.path === "output_contract.required_fields.0"));
+  assert.ok(result.diagnostics.some((diagnostic) => diagnostic.path === "output_contract.blocking_rules.0.message"));
 });
 
 test("rejects policy-disabled code conformance example", () => {

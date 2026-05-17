@@ -118,6 +118,151 @@ export interface AwpPolicySpec {
   };
 }
 
+export interface AwpBlockingIssueSpec {
+  code: string;
+  message: string;
+  field?: string;
+}
+
+export interface AwpInputMappingResult {
+  normalized_input: Record<string, unknown>;
+  route_decision: {
+    awp_id: string;
+    entry_node: string;
+    reason: string;
+  };
+  validation: {
+    passed: boolean;
+    blocking_issues: AwpBlockingIssueSpec[];
+    assumptions: string[];
+  };
+  user_facing_prompt?: {
+    message: string;
+    required_fields: string[];
+  };
+}
+
+export interface AwpInputRoutingGateSpec {
+  code: string;
+  condition: string;
+  entry_node: string;
+  reason: string;
+}
+
+export interface AwpInputClampSpec {
+  min?: number;
+  max?: number;
+}
+
+export interface AwpInputMappingContract {
+  raw_fields?: Record<string, AwpFieldSpec>;
+  intent_resolution?: {
+    task_kinds?: string[];
+    source_modes?: string[];
+    passage_modes?: string[];
+    missing_inputs?: string[];
+    assumptions?: string[];
+  };
+  defaults?: Record<string, unknown>;
+  clamps?: Record<string, AwpInputClampSpec>;
+  routing_gates?: AwpInputRoutingGateSpec[];
+  blocking_rules?: AwpBlockingIssueSpec[];
+  normalized_output: {
+    normalized_input: Record<string, AwpFieldSpec>;
+    route_decision: {
+      awp_id?: string;
+      entry_node: string;
+      reason?: string;
+    };
+    validation: {
+      blocking_issue_codes?: string[];
+      assumptions?: string[];
+      user_facing_prompt_fields?: string[];
+    };
+  };
+}
+
+export type AwpQualityContractMode = "blocking" | "advisory";
+export type AwpQualityIssueSeverity = "blocker" | "warning";
+
+export interface AwpRetryPolicySpec {
+  normal_attempts?: number;
+  agentic_extra_attempts?: number;
+  retry_input?: "issues_and_suggestions" | "failed_artifact" | "custom";
+  no_graph_cycle?: boolean;
+}
+
+export interface AwpQualityTargetSpec {
+  artifact: string;
+  checks: string[];
+}
+
+export interface AwpQualityContract {
+  mode: AwpQualityContractMode;
+  targets: AwpQualityTargetSpec[];
+  required_evidence?: string[];
+  retry_policy?: AwpRetryPolicySpec;
+  result_shape?: {
+    score_required?: boolean;
+    metrics?: string[];
+    blocking_issue_codes?: string[];
+    retry_hints_required?: boolean;
+  };
+}
+
+export interface AwpQcResult {
+  passed: boolean;
+  score: number | null;
+  blocking_issues: Array<AwpBlockingIssueSpec & {
+    severity: AwpQualityIssueSeverity;
+    evidence?: string;
+  }>;
+  retry_hints: Array<{
+    target_node: string;
+    instruction: string;
+  }>;
+  metrics: Record<string, number | boolean | string | null>;
+}
+
+export interface AwpOutputContract {
+  required_fields: string[];
+  required_metadata?: string[];
+  include_qc_summary?: boolean;
+  include_usage?: boolean;
+  include_protocol_metadata?: boolean;
+  blocking_rules?: AwpBlockingIssueSpec[];
+}
+
+export type AwpDataSourceKind = "api" | "connector" | "file" | "inline" | "runtime";
+export type AwpHttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+export type AwpDataSourceAuthMode = "none" | "api_key" | "bearer" | "oauth" | "runtime";
+
+export interface AwpApiDataSourceSpec {
+  endpoint: string;
+  method?: AwpHttpMethod;
+  headers?: Record<string, string>;
+  query?: Record<string, string>;
+  body_schema?: Record<string, unknown>;
+  auth?: AwpDataSourceAuthMode;
+  timeout_ms?: number;
+}
+
+export interface AwpDataSourceSpec {
+  kind: AwpDataSourceKind;
+  description?: string;
+  schema_format?: AwpToolSchemaFormat;
+  input_schema?: Record<string, unknown>;
+  return_schema?: Record<string, unknown>;
+  api?: AwpApiDataSourceSpec;
+  cache?: {
+    enabled?: boolean;
+    ttl_seconds?: number;
+    key_fields?: string[];
+  };
+  maps_to?: string[];
+  metadata?: Record<string, unknown>;
+}
+
 export interface AwpConnectorSpec {
   kind: string;
   source: string;
@@ -342,6 +487,10 @@ export type AwpNodeType =
   | "tool"
   | "connector"
   | "code"
+  | "data_source"
+  | "validate"
+  | "guard"
+  | "qc"
   | "router"
   | "join"
   | "state"
@@ -378,6 +527,10 @@ export interface AwpTemplate {
   inputs?: Record<string, AwpFieldSpec>;
   outputs?: Record<string, AwpFieldSpec>;
   state?: AwpStateSpec;
+  data_sources?: Record<string, AwpDataSourceSpec>;
+  input_mapping_contract?: AwpInputMappingContract;
+  quality_contract?: AwpQualityContract;
+  output_contract?: AwpOutputContract;
   agents: Record<string, AwpAgentSpec>;
   tools?: Record<string, AwpToolSpec>;
   connectors?: Record<string, AwpConnectorSpec>;

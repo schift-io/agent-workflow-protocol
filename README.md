@@ -114,8 +114,9 @@ Every adapter target should classify a template before execution:
 - `unsupported`: the template violates policy or cannot be represented safely.
 
 The conformance examples cover simple LLM calls, structured output, tool calls,
-retrieval, approval-gated writes, outbound webhook allowlists, streaming,
-multi-step graphs, subworkflows, and policy-disabled code.
+retrieval, contract gates, API data sources, approval-gated writes, outbound
+webhook allowlists, streaming, multi-step graphs, subworkflows, and
+policy-disabled code.
 
 ### Tool Calls Have Stable IDs
 
@@ -145,10 +146,20 @@ AWP does not treat observability as an afterthought. Templates can require:
 - approval events
 - intermediate audit checkpoints
 
-This lets Schift, LangGraph, and Vercel AI SDK runs produce comparable evidence.
-AWP does not require or permit storing hidden raw chain-of-thought; adapters log
-reasoning summaries, token metadata, or redacted traces only when the provider
-or host runtime exposes them.
+This lets Schift, LangGraph, Vercel AI SDK, and Google Gen AI runs produce
+comparable evidence. AWP does not require or permit storing hidden raw
+chain-of-thought; adapters log reasoning summaries, token metadata, or redacted
+traces only when the provider or host runtime exposes them.
+
+### Contracts Stay Portable
+
+AWP can declare `input_mapping_contract`, `data_sources`, `quality_contract`, and
+`output_contract` without binding them to one product workflow. API data sources
+keep OpenAPI-shaped `input_schema` and `return_schema` in YAML, while adapters
+can pass or lower those schemas according to the target SDK. Google Gen AI can
+consume OpenAPI-subset schema objects through `responseSchema`, or JSON Schema
+through `responseJsonSchema`, so AWP does not add a separate helper layer for
+that path.
 
 ## Quick Start
 

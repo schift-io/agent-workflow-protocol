@@ -1,0 +1,211 @@
+schema: agent-workflow-protocol
+version: "0.1"
+id: contract-gates
+name: Contract gates
+description: Generic input mapping, API data source, QC, and output contract gates.
+
+inputs:
+  request:
+    type: string
+    required: true
+  record_id:
+    type: string
+    required: false
+
+outputs:
+  result:
+    type: object
+    required: true
+  qc_summary:
+    type: object
+    required: true
+
+data_sources:
+  source_record:
+    kind: api
+    description: Fetch source data needed by this workflow.
+    schema_format: openapi_schema
+    input_schema:
+      type: object
+      required: [record_id]
+      properties:
+        record_id:
+          type: string
+    return_schema:
+      type: object
+      required: [id, body]
+      properties:
+        id:
+          type: string
+        body:
+          type: string
+        metadata:
+          type: object
+    api:
+      endpoint: https://api.example.com/v1/records/{record_id}
+      method: GET
+      auth: runtime
+      timeout_ms: 3000
+    cache:
+      enabled: true
+      ttl_seconds: 300
+      key_fields: [record_id]
+    maps_to: [source]
+
+input_mapping_contract:
+  raw_fields:
+    request:
+      type: string
+      required: true
+    record_id:
+      type: string
+      required: false
+  intent_resolution:
+    task_kinds: [generate, transform, summarize]
+    source_modes: [inline, external_api]
+    missing_inputs: [record_id]
+    assumptions: [default_task_kind]
+  defaults:
+    task_kind: summarize
+  clamps:
+    max_items:
+      min: 1
+      max: 10
+  routing_gates:
+    - code: external_record_requested
+      condition: record_id is present
+      entry_node: fetch_source
+      reason: External source data is required before generation.
+  blocking_rules:
+    - code: request_missing
+      message: Enter a request before running this workflow.
+      field: request
+  normalized_output:
+    normalized_input:
+      request:
+        type: string
+        required: true
+      record_id:
+        type: string
+        required: false
+      task_kind:
+        type: string
+        required: true
+    route_decision:
+      awp_id: contract-gates
+      entry_node: map_input
+      reason: Runtime resolves whether external data is needed.
+    validation:
+      blocking_issue_codes: [request_missing]
+      assumptions: [default_task_kind]
+      user_facing_prompt_fields: [request]
+
+quality_contract:
+  mode: blocking
+  targets:
+    - artifact: draft
+      checks: [grounded_in_source, schema_validity, policy_compliance]
+    - artifact: final_output
+      checks: [required_fields_present, qc_summary_present]
+  required_evidence: [evaluations, quality_summary, retry_hints]
+  retry_policy:
+    normal_attempts: 3
+    agentic_extra_attempts: 1
+    retry_input: issues_and_suggestions
+    no_graph_cycle: true
+  result_shape:
+    score_required: true
+    metrics: [groundedness, completeness, schema_validity]
+    blocking_issue_codes: [draft_not_grounded, output_contract_failed]
+    retry_hints_required: true
+
+output_contract:
+  required_fields: [result, qc_summary]
+  required_metadata: [awp_id, run_id, graph_node_ids]
+  include_qc_summary: true
+  include_usage: true
+  include_protocol_metadata: true
+  blocking_rules:
+    - code: result_missing
+      message: The workflow result is missing.
+      field: result
+
+agents:
+  generate:
+    role: artifact-generator
+    model:
+      provider: openai
+      name: gpt-4o-mini
+    instructions: Generate the requested artifact using normalized input and available source data.
+
+graph:
+  start: map_input
+  nodes:
+    map_input:
+      type: validate
+      label: Map and validate user input
+      config:
+        contract: input_mapping_contract
+    fetch_source:
+      type: data_source
+      ref: source_record
+    guard_source:
+      type: guard
+      label: Check source access policy
+      config:
+        checks: [auth_scope, data_minimization]
+    generate:
+      type: agent
+      ref: generate
+    check_draft:
+      type: qc
+      label: Evaluate generated artifact
+      config:
+        contract: quality_contract
+        target: draft
+    validate_output:
+      type: validate
+      label: Validate output payload
+      config:
+        contract: output_contract
+    done:
+      type: end
+  edges:
+    - from: map_input
+      to: fetch_source
+      condition: route.external_api
+    - from: map_input
+      to: generate
+      condition: route.inline
+    - from: fetch_source
+      to: guard_source
+    - from: guard_source
+      to: generate
+    - from: generate
+      to: check_draft
+    - from: check_draft
+      to: validate_output
+    - from: validate_output
+      to: done
+
+adapters:
+  schift:
+    target: workflow_v2
+    status: direct
+  vercel_ai_sdk:
+    target: generateText
+    status: requires_runtime
+    runtime: host
+    notes:
+      - Multi-node contract gates should be hosted around model calls.
+  google_genai:
+    target: models.generateContent
+    status: requires_runtime
+    runtime: host
+    notes:
+      - API data source and QC gates remain explicit host runtime steps.
+  langgraph_js:
+    target: StateGraph
+    status: direct
+    notes:
+      - Contract gates map to graph nodes and runtime policies.

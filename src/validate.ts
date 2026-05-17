@@ -1,6 +1,7 @@
 import {
   AWP_SCHEMA,
   AWP_VERSION,
+  type AwpBlockingIssueSpec,
   type AwpDiagnostic,
   type AwpTemplate,
   type AwpToolChoiceSpec,
@@ -41,6 +42,7 @@ export function validateAwpTemplate(template: AwpTemplate): AwpValidationResult 
 
   const toolIds = new Set(Object.keys(template.tools ?? {}));
   const connectorIds = new Set(Object.keys(template.connectors ?? {}));
+  const dataSourceIds = new Set(Object.keys(template.data_sources ?? {}));
 
   for (const [agentId, agent] of Object.entries(template.agents ?? {})) {
     for (const childId of agent.children ?? []) {
@@ -75,14 +77,287 @@ export function validateAwpTemplate(template: AwpTemplate): AwpValidationResult 
 
   validateToolChoice("tool_calling.default_choice", template.tool_calling?.default_choice, toolIds, diagnostics);
   validateTools(template, diagnostics);
+  validateDataSources(template, diagnostics);
   validatePolicies(template, diagnostics);
   validateNative(template, diagnostics);
-  validateGraph(template, agentIds, toolIds, connectorIds, diagnostics);
+  validateContracts(template, diagnostics);
+  validateGraph(template, agentIds, toolIds, connectorIds, dataSourceIds, diagnostics);
 
   return {
     valid: diagnostics.every((diagnostic) => diagnostic.level !== "error"),
     diagnostics,
   };
+}
+
+function validateDataSources(template: AwpTemplate, diagnostics: AwpDiagnostic[]): void {
+  for (const [sourceId, source] of Object.entries(template.data_sources ?? {})) {
+    if (source.kind === "api") {
+      if (!source.api?.endpoint) {
+        diagnostics.push({
+          level: "error",
+          path: `data_sources.${sourceId}.api.endpoint`,
+          message: "API data sources must declare an endpoint",
+        });
+      }
+      if (!source.return_schema) {
+        diagnostics.push({
+          level: "error",
+          path: `data_sources.${sourceId}.return_schema`,
+          message: "API data sources must declare a return schema",
+        });
+      }
+    }
+
+    if (source.api?.timeout_ms !== undefined && source.api.timeout_ms <= 0) {
+      diagnostics.push({
+        level: "error",
+        path: `data_sources.${sourceId}.api.timeout_ms`,
+        message: "API data source timeout must be greater than zero",
+      });
+    }
+
+    if (source.cache?.ttl_seconds !== undefined && source.cache.ttl_seconds < 0) {
+      diagnostics.push({
+        level: "error",
+        path: `data_sources.${sourceId}.cache.ttl_seconds`,
+        message: "Data source cache ttl must be non-negative",
+      });
+    }
+  }
+}
+
+function validateContracts(template: AwpTemplate, diagnostics: AwpDiagnostic[]): void {
+  const nodeIds = new Set(Object.keys(template.graph?.nodes ?? {}));
+
+  validateInputMappingContract(template, nodeIds, diagnostics);
+  validateQualityContract(template, diagnostics);
+  validateOutputContract(template, diagnostics);
+}
+
+function validateInputMappingContract(
+  template: AwpTemplate,
+  nodeIds: Set<string>,
+  diagnostics: AwpDiagnostic[],
+): void {
+  const contract = template.input_mapping_contract;
+  if (!contract) {
+    return;
+  }
+
+  if (!contract.normalized_output) {
+    diagnostics.push({
+      level: "error",
+      path: "input_mapping_contract.normalized_output",
+      message: "Input mapping contracts must define normalized output expectations",
+    });
+    return;
+  }
+
+  if (!contract.normalized_output.route_decision?.entry_node) {
+    diagnostics.push({
+      level: "error",
+      path: "input_mapping_contract.normalized_output.route_decision.entry_node",
+      message: "Input mapping route decisions must name an entry node",
+    });
+  } else if (
+    nodeIds.size > 0 &&
+    !nodeIds.has(contract.normalized_output.route_decision.entry_node)
+  ) {
+    diagnostics.push({
+      level: "error",
+      path: "input_mapping_contract.normalized_output.route_decision.entry_node",
+      message: `Unknown input mapping entry node '${contract.normalized_output.route_decision.entry_node}'`,
+    });
+  }
+
+  for (const [index, gate] of (contract.routing_gates ?? []).entries()) {
+    validateIssueCode(`input_mapping_contract.routing_gates.${index}.code`, gate.code, diagnostics);
+    if (!gate.condition) {
+      diagnostics.push({
+        level: "error",
+        path: `input_mapping_contract.routing_gates.${index}.condition`,
+        message: "Input routing gates must include a condition",
+      });
+    }
+    if (!gate.entry_node) {
+      diagnostics.push({
+        level: "error",
+        path: `input_mapping_contract.routing_gates.${index}.entry_node`,
+        message: "Input routing gates must name an entry node",
+      });
+    } else if (nodeIds.size > 0 && !nodeIds.has(gate.entry_node)) {
+      diagnostics.push({
+        level: "error",
+        path: `input_mapping_contract.routing_gates.${index}.entry_node`,
+        message: `Unknown input routing entry node '${gate.entry_node}'`,
+      });
+    }
+  }
+
+  for (const [index, rule] of (contract.blocking_rules ?? []).entries()) {
+    validateBlockingIssue(`input_mapping_contract.blocking_rules.${index}`, rule, diagnostics);
+  }
+
+  for (const [field, clamp] of Object.entries(contract.clamps ?? {})) {
+    if (
+      typeof clamp.min === "number" &&
+      typeof clamp.max === "number" &&
+      clamp.min > clamp.max
+    ) {
+      diagnostics.push({
+        level: "error",
+        path: `input_mapping_contract.clamps.${field}`,
+        message: "Input clamp min must be less than or equal to max",
+      });
+    }
+  }
+}
+
+function validateQualityContract(template: AwpTemplate, diagnostics: AwpDiagnostic[]): void {
+  const contract = template.quality_contract;
+  if (!contract) {
+    return;
+  }
+
+  if (!contract.mode) {
+    diagnostics.push({
+      level: "error",
+      path: "quality_contract.mode",
+      message: "Quality contracts must set mode",
+    });
+  }
+
+  if (!Array.isArray(contract.targets) || contract.targets.length === 0) {
+    diagnostics.push({
+      level: "error",
+      path: "quality_contract.targets",
+      message: "Quality contracts must name at least one artifact target",
+    });
+  }
+
+  for (const [index, target] of (contract.targets ?? []).entries()) {
+    if (!target.artifact) {
+      diagnostics.push({
+        level: "error",
+        path: `quality_contract.targets.${index}.artifact`,
+        message: "Quality target artifact is required",
+      });
+    }
+    if (!Array.isArray(target.checks) || target.checks.length === 0) {
+      diagnostics.push({
+        level: "error",
+        path: `quality_contract.targets.${index}.checks`,
+        message: "Quality targets must declare at least one check",
+      });
+    }
+  }
+
+  for (const [index, code] of (contract.result_shape?.blocking_issue_codes ?? []).entries()) {
+    validateIssueCode(
+      `quality_contract.result_shape.blocking_issue_codes.${index}`,
+      code,
+      diagnostics,
+    );
+  }
+
+  const retryPolicy = contract.retry_policy;
+  if (retryPolicy) {
+    if (retryPolicy.no_graph_cycle !== true) {
+      diagnostics.push({
+        level: "error",
+        path: "quality_contract.retry_policy.no_graph_cycle",
+        message: "Retry policy must be explicit metadata and must not introduce graph cycles",
+      });
+    }
+    validateNonNegativeInteger(
+      "quality_contract.retry_policy.normal_attempts",
+      retryPolicy.normal_attempts,
+      diagnostics,
+    );
+    validateNonNegativeInteger(
+      "quality_contract.retry_policy.agentic_extra_attempts",
+      retryPolicy.agentic_extra_attempts,
+      diagnostics,
+    );
+  }
+}
+
+function validateOutputContract(template: AwpTemplate, diagnostics: AwpDiagnostic[]): void {
+  const contract = template.output_contract;
+  if (!contract) {
+    return;
+  }
+
+  if (!Array.isArray(contract.required_fields) || contract.required_fields.length === 0) {
+    diagnostics.push({
+      level: "error",
+      path: "output_contract.required_fields",
+      message: "Output contracts must declare at least one required field",
+    });
+  }
+
+  const outputFields = new Set(Object.keys(template.outputs ?? {}));
+  for (const [index, field] of (contract.required_fields ?? []).entries()) {
+    if (!field) {
+      diagnostics.push({
+        level: "error",
+        path: `output_contract.required_fields.${index}`,
+        message: "Output contract required field must be non-empty",
+      });
+    } else if (outputFields.size > 0 && !outputFields.has(field)) {
+      diagnostics.push({
+        level: "error",
+        path: `output_contract.required_fields.${index}`,
+        message: `Output contract references undeclared output field '${field}'`,
+      });
+    }
+  }
+
+  for (const [index, rule] of (contract.blocking_rules ?? []).entries()) {
+    validateBlockingIssue(`output_contract.blocking_rules.${index}`, rule, diagnostics);
+  }
+}
+
+function validateBlockingIssue(
+  path: string,
+  issue: AwpBlockingIssueSpec,
+  diagnostics: AwpDiagnostic[],
+): void {
+  validateIssueCode(`${path}.code`, issue.code, diagnostics);
+  if (!issue.message) {
+    diagnostics.push({
+      level: "error",
+      path: `${path}.message`,
+      message: "Blocking issue must include a user-facing message",
+    });
+  }
+}
+
+function validateIssueCode(path: string, code: string | undefined, diagnostics: AwpDiagnostic[]): void {
+  if (!code || !/^[a-z][a-z0-9_.-]*$/.test(code)) {
+    diagnostics.push({
+      level: "error",
+      path,
+      message: "Issue codes must be stable lowercase identifiers",
+    });
+  }
+}
+
+function validateNonNegativeInteger(
+  path: string,
+  value: number | undefined,
+  diagnostics: AwpDiagnostic[],
+): void {
+  if (value === undefined) {
+    return;
+  }
+  if (!Number.isInteger(value) || value < 0) {
+    diagnostics.push({
+      level: "error",
+      path,
+      message: "Retry attempt counts must be non-negative integers",
+    });
+  }
 }
 
 function validateToolChoice(
@@ -213,6 +488,7 @@ function validateGraph(
   agentIds: Set<string>,
   toolIds: Set<string>,
   connectorIds: Set<string>,
+  dataSourceIds: Set<string>,
   diagnostics: AwpDiagnostic[],
 ): void {
   const graph = template.graph;
@@ -250,6 +526,13 @@ function validateGraph(
         level: "error",
         path: `graph.nodes.${nodeId}.ref`,
         message: `Unknown connector '${node.ref}'`,
+      });
+    }
+    if (node.type === "data_source" && node.ref && !dataSourceIds.has(node.ref)) {
+      diagnostics.push({
+        level: "error",
+        path: `graph.nodes.${nodeId}.ref`,
+        message: `Unknown data source '${node.ref}'`,
       });
     }
     if (node.type === "code" && template.policies?.code?.enabled === false) {

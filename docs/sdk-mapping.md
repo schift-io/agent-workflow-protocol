@@ -5,17 +5,20 @@ objects and normalize runtime events back into AWP run evidence.
 
 ## Mapping Matrix
 
-| AWP concept | LangGraph | Vercel AI SDK | Schift |
-| --- | --- | --- | --- |
-| `graph.nodes` / `graph.edges` | `StateGraph` nodes, edges, conditional edges, subgraphs | Generated TypeScript control flow, routes, `Promise.all`, step loops | Managed-agent run graph or hosted workflow definition |
-| `agents.*.tools` | Model bound tools plus `ToolNode` or custom tool node | `tools` object passed to `generateText` / `streamText` | Managed-agent tool registry |
-| `tool_calling.default_choice` | Model/provider tool-choice config when available | Tool choice / step preparation where supported | Schift execution policy |
-| `tool_calling.parallelism` | Parallel graph supersteps or tool node fan-out | Host JS parallelism or SDK parallel tool calls | Worker/executor concurrency caps |
-| `native.audit` | Checkpointer plus interrupts / resume commands | Approval request/result parts and application state | Schift audit log and approval workflow |
-| `native.token_counter` | Provider metadata or tracing integration | `usage` / `totalUsage` | Schift run ledger |
-| `native.streaming` | Stream modes plus custom events | `streamText` parts | Schift live run event feed |
-| `native.structured_output` | Node output schema / adapter validation | `experimental_output` or host validation | Schift structured artifact |
-| AWP events | LangGraph stream modes and custom events | Stream parts and lifecycle callbacks | Schift run events |
+| AWP concept | LangGraph | Vercel AI SDK | Google Gen AI | Schift |
+| --- | --- | --- | --- | --- |
+| `graph.nodes` / `graph.edges` | `StateGraph` nodes, edges, conditional edges, subgraphs | Generated TypeScript control flow, routes, `Promise.all`, step loops | Host control flow around `models.generateContent` | Managed-agent run graph or hosted workflow definition |
+| `agents.*.tools` | Model bound tools plus `ToolNode` or custom tool node | `tools` object passed to `generateText` / `streamText` | `functionDeclarations` / host-owned tool execution | Managed-agent tool registry |
+| `data_sources.*` | Fetch/custom source nodes | Host fetch before/around model calls | Host fetch before/around model calls | Managed connector/source binding |
+| `tool_calling.default_choice` | Model/provider tool-choice config when available | Tool choice / step preparation where supported | `functionCallingConfig` where available | Schift execution policy |
+| `tool_calling.parallelism` | Parallel graph supersteps or tool node fan-out | Host JS parallelism or SDK parallel tool calls | Host JS parallelism around model/tool calls | Worker/executor concurrency caps |
+| `input_mapping_contract` / `output_contract` | Validation nodes and state schema | Host validation before/after model calls | Host validation before/after model calls | Runtime preflight/completion gates |
+| `quality_contract` | QC/evaluator nodes and retry policy metadata | Host evaluator steps and retry policy metadata | Host evaluator steps and retry policy metadata | Runtime QC gates and retry policy |
+| `native.audit` | Checkpointer plus interrupts / resume commands | Approval request/result parts and application state | Host approval state around function calls | Schift audit log and approval workflow |
+| `native.token_counter` | Provider metadata or tracing integration | `usage` / `totalUsage` | provider usage metadata | Schift run ledger |
+| `native.streaming` | Stream modes plus custom events | `streamText` parts | streaming responses mapped to events | Schift live run event feed |
+| `native.structured_output` | Node output schema / adapter validation | `experimental_output` or host validation | `responseSchema` or `responseJsonSchema` | Schift structured artifact |
+| AWP events | LangGraph stream modes and custom events | Stream parts and lifecycle callbacks | Response lifecycle and host events | Schift run events |
 
 ## Adapter Rules
 
@@ -66,6 +69,18 @@ objects and normalize runtime events back into AWP run evidence.
 - Map approval requests into AWP `tool.approval.*` events.
 - Use `usage` and `totalUsage` when exposed, without fabricating unavailable
   counts.
+
+## Google Gen AI Adapter Notes
+
+- Keep YAML schemas in AWP as OpenAPI-compatible schema objects
+  (`schema_format: openapi_schema`).
+- Pass compatible schemas directly to `responseSchema` with
+  `responseMimeType: "application/json"` when using the SDK's OpenAPI-subset
+  schema path.
+- Use `responseJsonSchema` only when the SDK/API path should receive a JSON
+  Schema object directly.
+- Do not duplicate schema definitions in adapter-specific fields. The AWP YAML
+  remains the canonical schema source.
 
 ## Schift Adapter Notes
 
