@@ -7,7 +7,8 @@ objects and normalize runtime events back into AWP run evidence.
 
 | AWP concept | LangGraph | Vercel AI SDK | Google Gen AI | Schift |
 | --- | --- | --- | --- | --- |
-| `graph.nodes` / `graph.edges` | `StateGraph` nodes, edges, conditional edges, subgraphs | Generated TypeScript control flow, routes, `Promise.all`, step loops | Host control flow around `models.generateContent` | Managed-agent run graph or hosted workflow definition |
+| `graph.nodes` / `graph.edges` | `StateGraph` nodes, edges, conditional edges, subgraphs | Generated TypeScript control flow, routes, parallel stages, step loops | Host control flow around `models.generateContent` | Managed-agent run graph or hosted workflow definition |
+| `graph.nodes.*.stage` / `parallel_group` | Supersteps with barrier fan-in | Host-controlled parallel stage execution | Host-controlled parallel stage execution | Workflow v2 execution groups |
 | `agents.*.tools` | Model bound tools plus `ToolNode` or custom tool node | `tools` object passed to `generateText` / `streamText` | `functionDeclarations` / host-owned tool execution | Managed-agent tool registry |
 | `data_sources.*` | Fetch/custom source nodes | Host fetch before/around model calls | Host fetch before/around model calls | Managed connector/source binding |
 | `tool_calling.default_choice` | Model/provider tool-choice config when available | Tool choice / step preparation where supported | `functionCallingConfig` where available | Schift execution policy |
@@ -52,6 +53,12 @@ objects and normalize runtime events back into AWP run evidence.
    edges, connector bindings, approval gates, external egress policy, secret
    resolution, or structured-output requirements.
 
+8. Preserve stage barriers.
+   Nodes in the same stage may be run concurrently only when there is no graph
+   dependency between them. Join and aggregate nodes must wait for all inbound
+   producer nodes to settle and must expose missing, failed, or skipped inputs
+   in a structured aggregate artifact.
+
 ## LangGraph Adapter Notes
 
 - Compile `graph.start` into the `START` edge.
@@ -65,6 +72,8 @@ objects and normalize runtime events back into AWP run evidence.
 - Compile `tools` into AI SDK tool definitions.
 - Use `tool_calling.parallelism` to decide when the generated host code may use
   parallel execution.
+- Use `graph.nodes.*.stage` and `parallel_group` for host-controlled fan-out
+  when the template needs independent QC or evaluator nodes to run together.
 - Use `agents.*.max_steps` or adapter defaults for bounded step loops.
 - Map approval requests into AWP `tool.approval.*` events.
 - Use `usage` and `totalUsage` when exposed, without fabricating unavailable

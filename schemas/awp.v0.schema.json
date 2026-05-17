@@ -486,10 +486,12 @@
       "required": ["type"],
       "properties": {
         "type": {
-          "enum": ["agent", "tool", "connector", "code", "data_source", "validate", "guard", "qc", "router", "join", "state", "human_approval", "subworkflow", "end"]
+          "enum": ["agent", "aggregate", "tool", "connector", "code", "data_source", "validate", "guard", "qc", "router", "join", "state", "human_approval", "subworkflow", "end"]
         },
         "ref": { "type": "string" },
         "label": { "type": "string" },
+        "stage": { "type": "integer", "minimum": 0 },
+        "parallel_group": { "type": "string", "minLength": 1 },
         "config": { "type": "object" }
       },
       "additionalProperties": true
@@ -510,6 +512,15 @@
       "required": ["start", "nodes", "edges"],
       "properties": {
         "start": { "type": "string" },
+        "execution": {
+          "type": "object",
+          "properties": {
+            "max_concurrency": { "type": "integer", "minimum": 1 },
+            "stage_policy": { "enum": ["auto", "explicit"] },
+            "aggregate_policy": { "enum": ["all_settled", "fail_fast"] }
+          },
+          "additionalProperties": true
+        },
         "nodes": {
           "type": "object",
           "minProperties": 1,

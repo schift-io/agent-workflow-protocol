@@ -51,6 +51,7 @@ const MARGIN = 32;
 
 const NODE_COLORS: Record<AwpNodeSpec["type"], { fill: string; stroke: string; accent: string }> = {
   agent: { fill: "#eef6ff", stroke: "#2563eb", accent: "#1d4ed8" },
+  aggregate: { fill: "#f8fafc", stroke: "#64748b", accent: "#475569" },
   tool: { fill: "#ecfdf5", stroke: "#059669", accent: "#047857" },
   connector: { fill: "#f0fdfa", stroke: "#0d9488", accent: "#0f766e" },
   code: { fill: "#fefce8", stroke: "#ca8a04", accent: "#a16207" },

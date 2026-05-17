@@ -273,6 +273,8 @@ export interface AwpConnectorSpec {
 
 export type AwpNativeEvent =
   | "run.started"
+  | "stage.started"
+  | "stage.completed"
   | "step.started"
   | "state.updated"
   | "model.started"
@@ -484,6 +486,7 @@ export interface AwpToolCallRecord {
 
 export type AwpNodeType =
   | "agent"
+  | "aggregate"
   | "tool"
   | "connector"
   | "code"
@@ -502,6 +505,8 @@ export interface AwpNodeSpec {
   type: AwpNodeType;
   ref?: string;
   label?: string;
+  stage?: number;
+  parallel_group?: string;
   config?: Record<string, unknown>;
 }
 
@@ -512,10 +517,17 @@ export interface AwpEdgeSpec {
   label?: string;
 }
 
+export interface AwpGraphExecutionSpec {
+  max_concurrency?: number;
+  stage_policy?: "auto" | "explicit";
+  aggregate_policy?: "all_settled" | "fail_fast";
+}
+
 export interface AwpGraphSpec {
   start: string;
   nodes: Record<string, AwpNodeSpec>;
   edges: AwpEdgeSpec[];
+  execution?: AwpGraphExecutionSpec;
 }
 
 export interface AwpTemplate {

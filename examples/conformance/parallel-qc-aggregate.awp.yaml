@@ -1,0 +1,149 @@
+schema: agent-workflow-protocol
+version: "0.1"
+id: parallel-qc-aggregate
+name: Parallel QC aggregate
+description: Six independent QC agents run in the same stage and feed one aggregate node.
+
+graph:
+  start: draft
+  execution:
+    stage_policy: explicit
+    aggregate_policy: all_settled
+    max_concurrency: 6
+  nodes:
+    draft:
+      type: agent
+      ref: writer
+      label: Draft answer
+      stage: 0
+    qc_factuality:
+      type: qc
+      ref: factuality_qc
+      label: Factuality QC
+      stage: 1
+      parallel_group: answer_qc
+    qc_citations:
+      type: qc
+      ref: citation_qc
+      label: Citation QC
+      stage: 1
+      parallel_group: answer_qc
+    qc_policy:
+      type: qc
+      ref: policy_qc
+      label: Policy QC
+      stage: 1
+      parallel_group: answer_qc
+    qc_security:
+      type: qc
+      ref: security_qc
+      label: Security QC
+      stage: 1
+      parallel_group: answer_qc
+    qc_completeness:
+      type: qc
+      ref: completeness_qc
+      label: Completeness QC
+      stage: 1
+      parallel_group: answer_qc
+    qc_style:
+      type: qc
+      ref: style_qc
+      label: Style QC
+      stage: 1
+      parallel_group: answer_qc
+    qc_aggregate:
+      type: aggregate
+      label: Aggregate QC
+      stage: 2
+      config:
+        mode: qc_report
+        pass_rule: all_required
+        failure_policy: collect_all
+        order_by: node_id
+    done:
+      type: end
+      stage: 3
+  edges:
+    - from: draft
+      to: qc_factuality
+    - from: draft
+      to: qc_citations
+    - from: draft
+      to: qc_policy
+    - from: draft
+      to: qc_security
+    - from: draft
+      to: qc_completeness
+    - from: draft
+      to: qc_style
+    - from: qc_factuality
+      to: qc_aggregate
+    - from: qc_citations
+      to: qc_aggregate
+    - from: qc_policy
+      to: qc_aggregate
+    - from: qc_security
+      to: qc_aggregate
+    - from: qc_completeness
+      to: qc_aggregate
+    - from: qc_style
+      to: qc_aggregate
+    - from: qc_aggregate
+      to: done
+
+agents:
+  writer:
+    role: writer
+    instructions: Draft the answer to be checked.
+    model:
+      provider: schift
+      name: default
+  factuality_qc:
+    role: quality_checker
+    instructions: Check factual accuracy.
+    model:
+      provider: schift
+      name: default
+  citation_qc:
+    role: quality_checker
+    instructions: Check citation coverage.
+    model:
+      provider: schift
+      name: default
+  policy_qc:
+    role: quality_checker
+    instructions: Check policy constraints.
+    model:
+      provider: schift
+      name: default
+  security_qc:
+    role: quality_checker
+    instructions: Check security-sensitive claims.
+    model:
+      provider: schift
+      name: default
+  completeness_qc:
+    role: quality_checker
+    instructions: Check answer completeness.
+    model:
+      provider: schift
+      name: default
+  style_qc:
+    role: quality_checker
+    instructions: Check tone and format.
+    model:
+      provider: schift
+      name: default
+
+adapters:
+  schift:
+    target: workflow_v2
+    status: direct
+    runtime: schift
+  vercel-ai:
+    target: host-runtime
+    status: requires_runtime
+    runtime: host
+    notes:
+      - Requires a host runner to execute stage 1 as bounded parallel work and aggregate all QC results.

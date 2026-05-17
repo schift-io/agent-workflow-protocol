@@ -542,6 +542,20 @@ function validateGraph(
         message: "Code nodes are disabled by policy",
       });
     }
+    if (node.stage !== undefined && (!Number.isInteger(node.stage) || node.stage < 0)) {
+      diagnostics.push({
+        level: "error",
+        path: `graph.nodes.${nodeId}.stage`,
+        message: "Node stage must be a non-negative integer",
+      });
+    }
+    if (node.parallel_group !== undefined && node.parallel_group.length === 0) {
+      diagnostics.push({
+        level: "error",
+        path: `graph.nodes.${nodeId}.parallel_group`,
+        message: "Parallel group must be non-empty when provided",
+      });
+    }
   }
 
   const adjacency = new Map<string, string[]>();
@@ -569,6 +583,30 @@ function validateGraph(
     if (nodeIds.has(edge.from) && nodeIds.has(edge.to)) {
       adjacency.get(edge.from)?.push(edge.to);
       inDegree.set(edge.to, (inDegree.get(edge.to) ?? 0) + 1);
+      const sourceStage = graph.nodes[edge.from]?.stage;
+      const targetStage = graph.nodes[edge.to]?.stage;
+      if (
+        sourceStage !== undefined &&
+        targetStage !== undefined &&
+        sourceStage >= targetStage
+      ) {
+        diagnostics.push({
+          level: "error",
+          path: `graph.edges.${index}`,
+          message: "Explicit node stages must increase across graph edges",
+        });
+      }
+    }
+  }
+
+  if (graph.execution?.max_concurrency !== undefined) {
+    const maxConcurrency = graph.execution.max_concurrency;
+    if (!Number.isInteger(maxConcurrency) || maxConcurrency <= 0) {
+      diagnostics.push({
+        level: "error",
+        path: "graph.execution.max_concurrency",
+        message: "Graph max_concurrency must be a positive integer",
+      });
     }
   }
 
@@ -617,6 +655,32 @@ function validateGraph(
           message: "Node is not reachable from graph.start",
         });
       }
+    }
+  }
+
+  for (const [nodeId, node] of Object.entries(graph.nodes ?? {})) {
+    if (node.type !== "join" && node.type !== "aggregate") {
+      continue;
+    }
+    const inboundCount = (graph.edges ?? []).filter((edge) => edge.to === nodeId).length;
+    if (inboundCount < 2) {
+      diagnostics.push({
+        level: "warning",
+        path: `graph.nodes.${nodeId}`,
+        message: "Join and aggregate nodes are most useful with two or more inbound edges",
+      });
+    }
+    const mode = node.config?.mode;
+    if (
+      mode !== undefined &&
+      typeof mode === "string" &&
+      !["all_settled", "qc_report", "merge", "first_success"].includes(mode)
+    ) {
+      diagnostics.push({
+        level: "warning",
+        path: `graph.nodes.${nodeId}.config.mode`,
+        message: "Aggregate mode is not a standard portable mode",
+      });
     }
   }
 }

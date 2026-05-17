@@ -17,6 +17,7 @@ export type {
   AwpEdgeSpec,
   AwpFieldSpec,
   AwpGraphSpec,
+  AwpGraphExecutionSpec,
   AwpInputClampSpec,
   AwpInputMappingContract,
   AwpInputMappingResult,
@@ -82,10 +83,14 @@ export {
 
 export {
   createAwpRunId,
+  createAwpExecutionPlan,
   runAwpReference,
+  runAwpReferenceAsync,
 } from "./run.js";
 
 export type {
+  AwpExecutionPlan,
+  AwpExecutionStage,
   RunAwpReferenceOptions,
 } from "./run.js";
 

@@ -10,9 +10,11 @@ import {
   AWP_VERSION,
   SUPPORTED_SDK_TARGETS,
   classifyAwpAdapterProjection,
+  createAwpExecutionPlan,
   parseAwpYaml,
   renderAwpGraph,
   runAwpReference,
+  runAwpReferenceAsync,
   stringifyAwpYaml,
   validateAwpTemplate,
 } from "../dist/index.js";
@@ -214,6 +216,53 @@ test("reference runner carries explicit cost and quality observations to complet
   assert.deepEqual(completionEvent?.quality, quality);
 });
 
+test("reference runner plans same-stage QC fan-out and aggregates the barrier", async () => {
+  const source = readFileSync(
+    new URL("../examples/conformance/parallel-qc-aggregate.awp.yaml", import.meta.url),
+    "utf8",
+  );
+  const template = parseAwpYaml(source);
+  const plan = createAwpExecutionPlan(template);
+
+  assert.deepEqual(plan.stages.map((stage) => stage.node_ids), [
+    ["draft"],
+    [
+      "qc_factuality",
+      "qc_citations",
+      "qc_policy",
+      "qc_security",
+      "qc_completeness",
+      "qc_style",
+    ],
+    ["qc_aggregate"],
+    ["done"],
+  ]);
+  assert.equal(plan.policy.max_concurrency, 6);
+
+  const result = await runAwpReferenceAsync(template, {
+    runId: "awp_run_parallel_qc_test",
+    input: { question: "What did the source say?" },
+    now: () => new Date("2026-05-17T00:00:00.000Z"),
+  });
+
+  const stageEvents = result.events.filter((event) => event.type === "stage.started");
+  assert.equal(stageEvents.length, 4);
+  assert.equal(stageEvents[1].payload?.parallel, true);
+  assert.deepEqual(stageEvents[1].payload?.node_ids, plan.stages[1].node_ids);
+
+  const aggregate = result.intermediate_results.qc_aggregate;
+  assert.equal(aggregate.type, "awp.reference.aggregate_result");
+  assert.equal(aggregate.mode, "qc_report");
+  assert.equal(aggregate.result_count, 6);
+  assert.deepEqual(aggregate.missing_node_ids, []);
+  assert.deepEqual(aggregate.source_node_ids, plan.stages[1].node_ids);
+
+  const qcStepStarts = result.events.filter(
+    (event) => event.type === "step.started" && event.payload?.parallel_group === "answer_qc",
+  );
+  assert.equal(qcStepStarts.length, 6);
+});
+
 test("renders a portable graph model as Mermaid and SVG", () => {
   const source = readFileSync(
     new URL("../examples/conformance/multi-step-graph.awp.yaml", import.meta.url),
@@ -352,6 +401,7 @@ test("validates public conformance AWP YAML examples", () => {
     "contract-gates.awp.yaml",
     "multi-step-graph.awp.yaml",
     "outbound-webhook.awp.yaml",
+    "parallel-qc-aggregate.awp.yaml",
     "retrieval-answer.awp.yaml",
     "simple-llm.awp.yaml",
     "streaming.awp.yaml",

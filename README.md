@@ -346,6 +346,8 @@ native:
     level: info
     events:
       - run.started
+      - stage.started
+      - stage.completed
       - step.started
       - model.started
       - model.output.delta
@@ -393,6 +395,17 @@ graph:
 
 See [examples/research-router.awp.yaml](./examples/research-router.awp.yaml) for
 a fuller graph with parallel specialist branches and audit checkpoints.
+See [examples/conformance/parallel-qc-aggregate.awp.yaml](./examples/conformance/parallel-qc-aggregate.awp.yaml)
+for six same-stage QC agents feeding one aggregate result.
+
+## Parallel Stages
+
+AWP expresses parallel work as graph stages and barrier fan-in. A runtime may run
+nodes in the same stage concurrently when they have no dependency edge between
+them, then wait for the whole stage before moving to the next one. `stage` is an
+optional explicit stage number, `parallel_group` labels related same-stage work,
+and `graph.execution.max_concurrency` caps the fan-out. Use `join` or
+`aggregate` nodes to collect all inbound results into a deterministic artifact.
 
 ## Tool Calling Model
 

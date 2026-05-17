@@ -3,6 +3,7 @@ import type {
   AwpCostObservation,
   AwpModelRef,
   AwpNativeEvent,
+  AwpNodeSpec,
   AwpQualityObservation,
   AwpRunArtifact,
   AwpRunEvent,
@@ -22,9 +23,26 @@ export interface RunAwpReferenceOptions {
   quality?: AwpQualityObservation[];
 }
 
+export interface AwpExecutionStage {
+  index: number;
+  node_ids: string[];
+  max_concurrency?: number;
+}
+
+export interface AwpExecutionPlan {
+  stages: AwpExecutionStage[];
+  node_stage: Record<string, number>;
+  policy: {
+    stage_policy: "auto" | "explicit";
+    aggregate_policy: "all_settled" | "fail_fast";
+    max_concurrency?: number;
+  };
+}
+
 interface RuntimeState {
   runId: string;
   template: AwpTemplate;
+  executionPlan: AwpExecutionPlan;
   startedAt: string;
   startedAtMs: number;
   input: Record<string, unknown>;
@@ -44,6 +62,32 @@ export function runAwpReference(
   template: AwpTemplate,
   options: RunAwpReferenceOptions = {},
 ): AwpRunResult {
+  const state = createRuntimeState(template, options);
+
+  for (const stage of state.executionPlan.stages) {
+    executeStage(state, stage);
+  }
+
+  return completeRun(state, options);
+}
+
+export async function runAwpReferenceAsync(
+  template: AwpTemplate,
+  options: RunAwpReferenceOptions = {},
+): Promise<AwpRunResult> {
+  const state = createRuntimeState(template, options);
+
+  for (const stage of state.executionPlan.stages) {
+    await executeStageAsync(state, stage);
+  }
+
+  return completeRun(state, options);
+}
+
+function createRuntimeState(
+  template: AwpTemplate,
+  options: RunAwpReferenceOptions,
+): RuntimeState {
   const validation = validateAwpTemplate(template);
   if (!validation.valid) {
     const errors = validation.diagnostics
@@ -55,9 +99,11 @@ export function runAwpReference(
 
   const now = options.now ?? (() => new Date());
   const startedAt = now();
+  const executionPlan = createAwpExecutionPlan(template);
   const state: RuntimeState = {
     runId: options.runId ?? createAwpRunId(),
     template,
+    executionPlan,
     startedAt: startedAt.toISOString(),
     startedAtMs: startedAt.getTime(),
     input: options.input ?? {},
@@ -70,10 +116,12 @@ export function runAwpReference(
   };
 
   emit(state, "run.started", {
-    template_id: template.id,
+    template_id: state.template.id,
     template_version: template.version,
     target: options.target ?? "reference",
     input_keys: Object.keys(state.input),
+    execution: executionPlan.policy,
+    stage_count: executionPlan.stages.length,
   });
 
   emit(state, "state.updated", {
@@ -82,11 +130,14 @@ export function runAwpReference(
     },
   });
 
-  const nodeOrder = reachableTopologicalOrder(template);
-  for (const nodeId of nodeOrder) {
-    executeNode(state, nodeId);
-  }
+  return state;
+}
 
+function completeRun(
+  state: RuntimeState,
+  options: RunAwpReferenceOptions,
+): AwpRunResult {
+  const now = options.now ?? state.now;
   const completedAt = now();
   const durationMs = Math.max(0, completedAt.getTime() - state.startedAtMs);
   const usage = aggregateUsage(state.events
@@ -122,7 +173,7 @@ export function runAwpReference(
 
   return {
     run_id: state.runId,
-    template_id: template.id,
+    template_id: state.template.id,
     target: options.target ?? "reference",
     status: "completed",
     started_at: state.startedAt,
@@ -138,7 +189,95 @@ export function runAwpReference(
   };
 }
 
-function executeNode(state: RuntimeState, nodeId: string): void {
+export function createAwpExecutionPlan(template: AwpTemplate): AwpExecutionPlan {
+  const order = reachableTopologicalOrder(template);
+  const orderIndex = new Map(order.map((nodeId, index) => [nodeId, index]));
+  const incoming = incomingEdgesByTarget(template);
+  const nodeStage: Record<string, number> = {};
+
+  for (const nodeId of order) {
+    const dependencyStage = Math.max(
+      0,
+      ...((incoming.get(nodeId) ?? [])
+        .filter((sourceId) => orderIndex.has(sourceId))
+        .map((sourceId) => (nodeStage[sourceId] ?? 0) + 1)),
+    );
+    const explicitStage = explicitNodeStage(template.graph.nodes[nodeId]);
+    nodeStage[nodeId] = Math.max(explicitStage ?? dependencyStage, dependencyStage);
+  }
+
+  const grouped = new Map<number, string[]>();
+  for (const nodeId of order) {
+    const stage = nodeStage[nodeId] ?? 0;
+    const nodes = grouped.get(stage) ?? [];
+    nodes.push(nodeId);
+    grouped.set(stage, nodes);
+  }
+
+  const stages = [...grouped.entries()]
+    .sort(([left], [right]) => left - right)
+    .map(([index, nodeIds]) => ({
+      index,
+      node_ids: nodeIds.sort((left, right) => (orderIndex.get(left) ?? 0) - (orderIndex.get(right) ?? 0)),
+      ...(template.graph.execution?.max_concurrency ? { max_concurrency: template.graph.execution.max_concurrency } : {}),
+    }));
+
+  return {
+    stages,
+    node_stage: nodeStage,
+    policy: {
+      stage_policy: template.graph.execution?.stage_policy ?? "auto",
+      aggregate_policy: template.graph.execution?.aggregate_policy ?? "all_settled",
+      ...(template.graph.execution?.max_concurrency ? { max_concurrency: template.graph.execution.max_concurrency } : {}),
+    },
+  };
+}
+
+function executeStage(state: RuntimeState, stage: AwpExecutionStage): void {
+  const startedAtMs = state.now().getTime();
+  emit(state, "stage.started", stagePayload(stage));
+  for (const nodeId of stage.node_ids) {
+    executeNode(state, nodeId, stage);
+  }
+  emitStageCompleted(state, stage, startedAtMs);
+}
+
+async function executeStageAsync(state: RuntimeState, stage: AwpExecutionStage): Promise<void> {
+  const startedAtMs = state.now().getTime();
+  emit(state, "stage.started", stagePayload(stage));
+  const limit = stage.max_concurrency ?? stage.node_ids.length;
+  for (let index = 0; index < stage.node_ids.length; index += limit) {
+    const batch = stage.node_ids.slice(index, index + limit);
+    await Promise.all(batch.map((nodeId) => Promise.resolve().then(() => {
+      executeNode(state, nodeId, stage);
+    })));
+  }
+  emitStageCompleted(state, stage, startedAtMs);
+}
+
+function stagePayload(stage: AwpExecutionStage): Record<string, unknown> {
+  return {
+    stage: stage.index,
+    node_ids: stage.node_ids,
+    node_count: stage.node_ids.length,
+    parallel: stage.node_ids.length > 1,
+    max_concurrency: stage.max_concurrency,
+  };
+}
+
+function emitStageCompleted(
+  state: RuntimeState,
+  stage: AwpExecutionStage,
+  startedAtMs: number,
+): void {
+  const durationMs = elapsedSince(state, startedAtMs);
+  emit(state, "stage.completed", {
+    ...stagePayload(stage),
+    duration_ms: durationMs,
+  }, undefined, undefined, undefined, undefined, undefined, durationMs);
+}
+
+function executeNode(state: RuntimeState, nodeId: string, stage: AwpExecutionStage): void {
   const node = state.template.graph.nodes[nodeId];
   const stepId = `${state.runId}_step_${String(state.sequence + 1).padStart(4, "0")}`;
   const stepStartedAtMs = state.now().getTime();
@@ -146,6 +285,8 @@ function executeNode(state: RuntimeState, nodeId: string): void {
   emit(state, "step.started", {
     node_type: node.type,
     ref: node.ref,
+    stage: stage.index,
+    parallel_group: node.parallel_group,
   }, nodeId, stepId);
 
   switch (node.type) {
@@ -157,6 +298,13 @@ function executeNode(state: RuntimeState, nodeId: string): void {
       break;
     case "human_approval":
       executeHumanApprovalNode(state, nodeId, stepId);
+      break;
+    case "qc":
+      executeQcNode(state, nodeId, stepId);
+      break;
+    case "join":
+    case "aggregate":
+      executeAggregateNode(state, nodeId, stepId);
       break;
     case "end":
       state.outputs = {
@@ -406,6 +554,54 @@ function executeReferenceToolCall(
   }, nodeId, stepId, protocolCallId, undefined, usage, toolDurationMs);
 
   return record;
+}
+
+function executeQcNode(state: RuntimeState, nodeId: string, stepId: string): void {
+  const node = state.template.graph.nodes[nodeId];
+  if (node.ref && state.template.agents[node.ref]) {
+    executeAgentNode(state, nodeId, stepId, node.ref);
+    return;
+  }
+
+  const result = {
+    type: "awp.reference.qc_result",
+    node_id: nodeId,
+    check: node.ref ?? node.config?.check ?? nodeId,
+    passed: true,
+    score: null,
+    blocking_issues: [],
+    retry_hints: [],
+    metrics: {},
+    input_nodes: incomingNodeIds(state.template, nodeId),
+  };
+  state.intermediateResults[nodeId] = result;
+  createArtifact(state, "intermediate_result", `${nodeId}.qc_result`, result, nodeId, stepId);
+}
+
+function executeAggregateNode(state: RuntimeState, nodeId: string, stepId: string): void {
+  const node = state.template.graph.nodes[nodeId];
+  const sourceNodeIds = incomingNodeIds(state.template, nodeId);
+  const inputs = sourceNodeIds.map((sourceNodeId) => ({
+    node_id: sourceNodeId,
+    stage: state.executionPlan.node_stage[sourceNodeId],
+    result: state.intermediateResults[sourceNodeId] ?? null,
+  }));
+  const missing = inputs
+    .filter((input) => input.result === null)
+    .map((input) => input.node_id);
+  const mode = String(node.config?.mode ?? "all_settled");
+  const aggregate = {
+    type: "awp.reference.aggregate_result",
+    node_id: nodeId,
+    mode,
+    source_node_ids: sourceNodeIds,
+    result_count: inputs.length - missing.length,
+    missing_node_ids: missing,
+    passed: missing.length === 0,
+    results: inputs,
+  };
+  state.intermediateResults[nodeId] = aggregate;
+  createArtifact(state, "intermediate_result", `${nodeId}.aggregate_result`, aggregate, nodeId, stepId);
 }
 
 function executeHumanApprovalNode(state: RuntimeState, nodeId: string, stepId: string): void {
@@ -708,4 +904,31 @@ function reachableTopologicalOrder(template: AwpTemplate): string[] {
   }
 
   return ordered;
+}
+
+function explicitNodeStage(node: AwpNodeSpec | undefined): number | undefined {
+  if (node?.stage === undefined) {
+    return undefined;
+  }
+  return Number.isInteger(node.stage) ? node.stage : undefined;
+}
+
+function incomingEdgesByTarget(template: AwpTemplate): Map<string, string[]> {
+  const incoming = new Map<string, string[]>();
+  for (const nodeId of Object.keys(template.graph.nodes)) {
+    incoming.set(nodeId, []);
+  }
+  for (const edge of template.graph.edges) {
+    if (!template.graph.nodes[edge.from] || !template.graph.nodes[edge.to]) {
+      continue;
+    }
+    incoming.get(edge.to)?.push(edge.from);
+  }
+  return incoming;
+}
+
+function incomingNodeIds(template: AwpTemplate, nodeId: string): string[] {
+  return template.graph.edges
+    .filter((edge) => edge.to === nodeId && template.graph.nodes[edge.from])
+    .map((edge) => edge.from);
 }

@@ -34,8 +34,9 @@ AWP v0.1 is a draft protocol for YAML-authored agent workflow templates.
 - `tool_calling`: model-level tool-choice, parallelism, result-correlation, and
   tool-result completeness policy.
 - `graph`: nodes and edges. Nodes reference agents, tools, connectors,
-  `data_source`, `validate`, `guard`, `qc`, routers, joins, human approvals,
-  subworkflows, or end states.
+  `data_source`, `validate`, `guard`, `qc`, routers, joins, aggregates, human
+  approvals, subworkflows, or end states. Nodes may declare `stage` and
+  `parallel_group` when the author needs explicit stage-barrier execution.
 - `adapters`: runtime-specific hints. These are optional and must not be needed
   to understand the core graph.
 
@@ -44,6 +45,8 @@ AWP v0.1 is a draft protocol for YAML-authored agent workflow templates.
 Runtimes that claim native AWP support should emit comparable events:
 
 - `run.started`
+- `stage.started`
+- `stage.completed`
 - `step.started`
 - `state.updated`
 - `model.started`
@@ -133,6 +136,30 @@ Portable gate node types:
 - `validate`: validate input mapping or output payload contracts.
 - `guard`: enforce policy, auth, budget, PII, or capability gates.
 - `qc`: evaluate intermediate or final artifacts against `quality_contract`.
+- `join` / `aggregate`: collect fan-in results after a stage barrier and emit a
+  deterministic aggregate artifact.
+
+## Stage and Aggregate Execution
+
+AWP represents parallel work as runtime-neutral stage barriers, not as a
+language-specific primitive. Runtimes should compute stages from the acyclic
+graph by default: every node in a stage may run after all prior dependency
+stages complete, and the next stage must wait for the full current stage to
+settle. Authors may set `graph.nodes.<id>.stage` to force independent nodes into
+the same stage, for example six QC nodes that all depend on one draft node.
+Explicit stages must increase across graph edges.
+
+`parallel_group` is a stable label for nodes that are intended to run together
+inside the same stage. It is evidence metadata and should not replace graph
+edges. `graph.execution.max_concurrency` may cap how many nodes in a stage run
+at once. `graph.execution.aggregate_policy` defines whether stage results are
+collected with all-settled semantics or whether a runtime may fail fast.
+
+Join and aggregate nodes should depend on every node whose result they consume.
+They should preserve deterministic result ordering, include missing or failed
+inputs explicitly, and produce a structured aggregate artifact. For QC fan-out,
+a typical aggregate node uses `config.mode: qc_report`,
+`failure_policy: collect_all`, and a pass rule such as `all_required`.
 
 ## Tool Calling Contract
 

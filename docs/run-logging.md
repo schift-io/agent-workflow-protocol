@@ -90,8 +90,8 @@ model is resolved, the event should make that explicit instead of silently
 omitting model metadata.
 
 `duration_ms` belongs on completed lifecycle events such as `model.completed`,
-`tool.completed`, `step.completed`, and `run.completed`. `AwpRunResult` also
-stores run-level `duration_ms`.
+`tool.completed`, `stage.completed`, `step.completed`, and `run.completed`.
+`AwpRunResult` also stores run-level `duration_ms`.
 
 Token usage is normalized through `AwpTokenUsage`:
 
@@ -127,6 +127,14 @@ call, evaluator pass, or lifecycle event:
 
 Use run-level observations on `AwpRunResult` for aggregate totals and final
 quality summaries.
+
+Parallel stage runners should emit `stage.started` before a barrier fan-out and
+`stage.completed` after all nodes in that stage settle. The stage payload should
+include the stage index, node ids, whether the stage was parallel, and any
+runtime concurrency cap. QC fan-out nodes should keep their own `step.*`,
+`model.*`, and artifact events; the downstream `join` or `aggregate` node should
+create a structured intermediate artifact containing every inbound node id,
+available result payload, and any missing input ids.
 
 The reference CLI accepts explicit observations and persists them end-to-end:
 
