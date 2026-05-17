@@ -1,6 +1,6 @@
 {
   "name": "@schift-io/agent-workflow-protocol",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "AWP: a YAML-first protocol for portable agent workflows.",
   "type": "module",
   "main": "./dist/index.js",
@@ -73,9 +73,9 @@
   "license": "MIT",
   "dependencies": {
     "@schift-io/sdk": "^0.9.4",
-    "@schift-io/workflow-google-genai": "^0.1.3",
-    "@schift-io/workflow-langgraph": "^0.1.3",
-    "@schift-io/workflow-vercel-ai": "^0.1.3",
+    "@schift-io/workflow-google-genai": "^0.1.4",
+    "@schift-io/workflow-langgraph": "^0.1.4",
+    "@schift-io/workflow-vercel-ai": "^0.1.4",
     "yaml": "^2.7.0"
   },
   "devDependencies": {
