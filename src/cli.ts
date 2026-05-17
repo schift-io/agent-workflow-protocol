@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { readFileSync } from "node:fs";
 import {
   parseAwpYaml,
+  renderAwpGraph,
   runAwpReference,
   validateAwpTemplate,
 } from "./index.js";
@@ -11,6 +12,10 @@ import type {
   AwpCostObservation,
   AwpQualityObservation,
 } from "./types.js";
+import type {
+  AwpGraphRenderDirection,
+  AwpGraphRenderFormat,
+} from "./render.js";
 
 interface ParsedArgs {
   command?: string;
@@ -35,6 +40,10 @@ async function main(argv: string[]): Promise<void> {
       break;
     case "run":
       await runCommand(args);
+      break;
+    case "render":
+    case "render-graph":
+      await renderCommand(args);
       break;
     default:
       throw new Error(`Unknown command '${args.command}'`);
@@ -109,6 +118,26 @@ async function runCommand(args: ParsedArgs): Promise<void> {
   }
 }
 
+async function renderCommand(args: ParsedArgs): Promise<void> {
+  const template = readTemplate(requireFile(args));
+  const format = parseRenderFormat(args.flags.format);
+  const direction = parseRenderDirection(args.flags.direction);
+  const output = renderAwpGraph(template, {
+    format,
+    ...(direction ? { direction } : {}),
+    ...(typeof args.flags.title === "string" ? { title: args.flags.title } : {}),
+  });
+
+  if (typeof args.flags.out === "string") {
+    await mkdir(dirname(args.flags.out), { recursive: true });
+    await writeFile(args.flags.out, output);
+    console.log(args.flags.out);
+    return;
+  }
+
+  console.log(output);
+}
+
 function requireFile(args: ParsedArgs): string {
   if (!args.file) {
     throw new Error(`Missing AWP YAML file for '${args.command ?? "command"}'`);
@@ -152,6 +181,33 @@ function parseJsonFlag(value: string | boolean | undefined, flagName: string): u
     throw new Error(`--${flagName} requires a JSON value`);
   }
   return JSON.parse(value);
+}
+
+function parseRenderFormat(value: string | boolean | undefined): AwpGraphRenderFormat {
+  if (value === undefined) {
+    return "svg";
+  }
+  if (typeof value === "boolean") {
+    throw new Error("--format requires one of: svg, html, mermaid, json");
+  }
+  if (value === "svg" || value === "html" || value === "mermaid" || value === "json") {
+    return value;
+  }
+  throw new Error(`Unsupported render format '${value}'. Use svg, html, mermaid, or json.`);
+}
+
+function parseRenderDirection(value: string | boolean | undefined): AwpGraphRenderDirection | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value === "boolean") {
+    throw new Error("--direction requires one of: LR, TD");
+  }
+  const upper = value.toUpperCase();
+  if (upper === "LR" || upper === "TD") {
+    return upper;
+  }
+  throw new Error(`Unsupported render direction '${value}'. Use LR or TD.`);
 }
 
 function isQualityObservation(value: unknown): value is AwpQualityObservation {
@@ -212,6 +268,7 @@ function printHelp(): void {
 Usage:
   awp validate <workflow.awp.yaml> [--json]
   awp run <workflow.awp.yaml> [--target reference] [--input '{"query":"..."}'] [--cost '{...}'] [--quality '[...]'] [--out .awp-runs/<id>] [--json]
+  awp render <workflow.awp.yaml> [--format svg|html|mermaid|json] [--direction LR|TD] [--out graph.svg]
 
 Targets:
   reference  Protocol reference runner. Emits run_id, events.jsonl, artifacts, and intermediate results without calling real models or tools.

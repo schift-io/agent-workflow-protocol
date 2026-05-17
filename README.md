@@ -34,6 +34,7 @@ schema, parser, validator, supported-target metadata, and SDK mapping rules.
 | Cost and quality observation persistence | Implemented |
 | Companion npm adapters | Shipped |
 | Reference runner | Implemented |
+| Graph renderer | Implemented |
 
 The public conformance YAML set lives in `examples/conformance/*.awp.yaml`.
 Schift Workflow v2 is the Schift-native managed-workflow target for these AWP
@@ -211,6 +212,21 @@ npm run build
 node dist/cli.js run examples/research-router.awp.yaml \
   --target reference \
   --input '{"query":"How should logs work?"}'
+```
+
+## Render A Graph
+
+Render the AWP node graph without installing Graphviz or a Mermaid runtime:
+
+```bash
+node dist/cli.js render examples/research-router.awp.yaml --out graph.svg
+```
+
+For docs and automation, the same command can emit `svg`, `html`, `mermaid`, or
+`json`:
+
+```bash
+node dist/cli.js render examples/research-router.awp.yaml --format mermaid
 ```
 
 Adapters that already have pricing or evaluator output can pass portable

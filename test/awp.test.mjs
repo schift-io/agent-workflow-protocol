@@ -11,6 +11,7 @@ import {
   SUPPORTED_SDK_TARGETS,
   classifyAwpAdapterProjection,
   parseAwpYaml,
+  renderAwpGraph,
   runAwpReference,
   stringifyAwpYaml,
   validateAwpTemplate,
@@ -213,6 +214,57 @@ test("reference runner carries explicit cost and quality observations to complet
   assert.deepEqual(completionEvent?.quality, quality);
 });
 
+test("renders a portable graph model as Mermaid and SVG", () => {
+  const source = readFileSync(
+    new URL("../examples/conformance/multi-step-graph.awp.yaml", import.meta.url),
+    "utf8",
+  );
+  const template = parseAwpYaml(source);
+
+  const mermaid = renderAwpGraph(template, { format: "mermaid" });
+  assert.match(mermaid, /^flowchart LR/);
+  assert.match(mermaid, /n_classify/);
+  assert.match(mermaid, /n_classify --> n_answer/);
+  assert.match(mermaid, /n_answer --> n_done/);
+
+  const svg = renderAwpGraph(template, { format: "svg" });
+  assert.match(svg, /<svg/);
+  assert.match(svg, /Multi-step graph/);
+  assert.match(svg, /classify/);
+  assert.match(svg, /answer/);
+});
+
+test("CLI renders graph output to stdout or file", () => {
+  const cli = fileURLToPath(new URL("../dist/cli.js", import.meta.url));
+  const workflow = fileURLToPath(new URL("../examples/conformance/multi-step-graph.awp.yaml", import.meta.url));
+  const mermaid = execFileSync(process.execPath, [
+    cli,
+    "render",
+    workflow,
+    "--format",
+    "mermaid",
+  ], { encoding: "utf8" });
+
+  assert.match(mermaid, /^flowchart LR/);
+  assert.match(mermaid, /n_classify --> n_answer/);
+
+  const outDir = mkdtempSync(join(tmpdir(), "awp-render-"));
+  try {
+    const outFile = join(outDir, "graph.svg");
+    const output = execFileSync(process.execPath, [
+      cli,
+      "render-graph",
+      workflow,
+      "--out",
+      outFile,
+    ], { encoding: "utf8" });
+    assert.equal(output.trim(), outFile);
+    assert.match(readFileSync(outFile, "utf8"), /<svg/);
+  } finally {
+    rmSync(outDir, { recursive: true, force: true });
+  }
+});
+
 test("CLI persists cost and quality observations in run files", () => {
   const cli = fileURLToPath(new URL("../dist/cli.js", import.meta.url));
   const workflow = fileURLToPath(new URL("../examples/conformance/simple-llm.awp.yaml", import.meta.url));
@@ -407,6 +459,7 @@ test("CLI prints help for global and command help flags", () => {
 
   assert.match(globalHelp, /Usage:/);
   assert.match(globalHelp, /awp validate/);
+  assert.match(globalHelp, /awp render/);
   assert.match(commandHelp, /Usage:/);
   assert.match(commandHelp, /awp run/);
 });

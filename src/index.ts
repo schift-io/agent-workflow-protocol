@@ -90,6 +90,23 @@ export type {
 } from "./run.js";
 
 export {
+  createAwpGraphRenderModel,
+  renderAwpGraph,
+  renderAwpGraphHtml,
+  renderAwpGraphMermaid,
+  renderAwpGraphSvg,
+} from "./render.js";
+
+export type {
+  AwpGraphRenderDirection,
+  AwpGraphRenderEdge,
+  AwpGraphRenderFormat,
+  AwpGraphRenderModel,
+  AwpGraphRenderNode,
+  AwpGraphRenderOptions,
+} from "./render.js";
+
+export {
   AWP_COMPANION_ADAPTER_IDS,
   classifyAwpAdapterProjection,
   classifyAwpAdapters,
