@@ -9,6 +9,7 @@ objects and normalize runtime events back into AWP run evidence.
 | --- | --- | --- | --- | --- |
 | Trigger nodes (`chat_trigger`, `manual_trigger`, `webhook_source`, etc.) | `START` edge plus input adapter node | Host route/server action before SDK call | Host request/event adapter before model call | Agent/workflow trigger binding |
 | `graph.nodes` / `graph.edges` | `StateGraph` nodes, edges, conditional edges, subgraphs | Generated TypeScript control flow, routes, parallel stages, step loops | Host control flow around `models.generateContent` | Managed-agent run graph or hosted workflow definition |
+| `graph.layout.react_flow` | Editor-only projection metadata; ignored by runtime compiler | Editor-only projection metadata; ignored by SDK call path | Editor-only projection metadata; ignored by SDK call path | Canvas node positions, handles, viewport |
 | `graph.nodes.*.stage` / `parallel_group` | Supersteps with barrier fan-in | Host-controlled parallel stage execution | Host-controlled parallel stage execution | Workflow v2 execution groups |
 | `agents.*.tools` | Model bound tools plus `ToolNode` or custom tool node | `tools` object passed to `generateText` / `streamText` | `functionDeclarations` / host-owned tool execution | Managed-agent tool registry |
 | `data_sources.*` | Fetch/custom source nodes | Host fetch before/around model calls | Host fetch before/around model calls | Managed connector/source binding |

@@ -610,6 +610,8 @@ function validateGraph(
     }
   }
 
+  validateGraphLayout(graph.layout, nodeIds, diagnostics);
+
   const queue = [...nodeIds].filter((nodeId) => (inDegree.get(nodeId) ?? 0) === 0);
   let visited = 0;
   while (queue.length > 0) {
@@ -682,5 +684,63 @@ function validateGraph(
         message: "Aggregate mode is not a standard portable mode",
       });
     }
+  }
+}
+
+function validateGraphLayout(
+  layout: AwpTemplate["graph"]["layout"] | undefined,
+  nodeIds: Set<string>,
+  diagnostics: AwpDiagnostic[],
+): void {
+  const reactFlow = layout?.react_flow;
+  if (!reactFlow) {
+    return;
+  }
+
+  for (const [nodeId, nodeLayout] of Object.entries(reactFlow.nodes ?? {})) {
+    if (!nodeIds.has(nodeId)) {
+      diagnostics.push({
+        level: "error",
+        path: `graph.layout.react_flow.nodes.${nodeId}`,
+        message: `Layout references unknown node '${nodeId}'`,
+      });
+    }
+    const position = nodeLayout.position;
+    if (
+      !position ||
+      typeof position.x !== "number" ||
+      typeof position.y !== "number" ||
+      !Number.isFinite(position.x) ||
+      !Number.isFinite(position.y)
+    ) {
+      diagnostics.push({
+        level: "error",
+        path: `graph.layout.react_flow.nodes.${nodeId}.position`,
+        message: "React Flow node layout must include finite x/y coordinates",
+      });
+    }
+    if (nodeLayout.width !== undefined && nodeLayout.width <= 0) {
+      diagnostics.push({
+        level: "error",
+        path: `graph.layout.react_flow.nodes.${nodeId}.width`,
+        message: "React Flow node width must be greater than zero",
+      });
+    }
+    if (nodeLayout.height !== undefined && nodeLayout.height <= 0) {
+      diagnostics.push({
+        level: "error",
+        path: `graph.layout.react_flow.nodes.${nodeId}.height`,
+        message: "React Flow node height must be greater than zero",
+      });
+    }
+  }
+
+  const viewport = reactFlow.viewport;
+  if (viewport && viewport.zoom <= 0) {
+    diagnostics.push({
+      level: "error",
+      path: "graph.layout.react_flow.viewport.zoom",
+      message: "React Flow viewport zoom must be greater than zero",
+    });
   }
 }

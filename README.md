@@ -382,6 +382,16 @@ native:
 
 graph:
   start: chat
+  layout:
+    react_flow:
+      nodes:
+        chat:
+          position: { x: 80, y: 160 }
+        triage:
+          position: { x: 380, y: 160 }
+        done:
+          position: { x: 680, y: 160 }
+      viewport: { x: 0, y: 0, zoom: 1 }
   nodes:
     chat:
       type: chat_trigger
@@ -402,6 +412,11 @@ Trigger nodes such as `chat_trigger`, `manual_trigger`, `schedule_trigger`,
 `webhook_source`, `gmail_trigger`, and `notion_trigger` represent how the run
 begins. Retrieval, approval, transformation, and side effects belong in
 downstream nodes after the trigger produces normalized input.
+
+Visual editors can preserve React Flow projection data under
+`graph.layout.react_flow`. Layout is not execution semantics; it keeps node
+positions, handles, and viewport stable when moving between Schift, Hub imports,
+and other canvas editors.
 
 See [examples/research-router.awp.yaml](./examples/research-router.awp.yaml) for
 a fuller graph with parallel specialist branches and audit checkpoints.

@@ -521,6 +521,7 @@
           },
           "additionalProperties": true
         },
+        "layout": { "$ref": "#/$defs/graphLayout" },
         "nodes": {
           "type": "object",
           "minProperties": 1,
@@ -530,6 +531,71 @@
           "type": "array",
           "items": { "$ref": "#/$defs/edge" }
         }
+      },
+      "additionalProperties": true
+    },
+    "canvasPosition": {
+      "type": "object",
+      "required": ["x", "y"],
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "reactFlowNodeLayout": {
+      "type": "object",
+      "required": ["position"],
+      "properties": {
+        "position": { "$ref": "#/$defs/canvasPosition" },
+        "width": { "type": "number", "exclusiveMinimum": 0 },
+        "height": { "type": "number", "exclusiveMinimum": 0 },
+        "source_handles": { "type": "array", "items": { "type": "string" } },
+        "target_handles": { "type": "array", "items": { "type": "string" } },
+        "data": { "type": "object" }
+      },
+      "additionalProperties": true
+    },
+    "reactFlowEdgeLayout": {
+      "type": "object",
+      "properties": {
+        "source_handle": { "type": "string" },
+        "target_handle": { "type": "string" },
+        "label": { "type": "string" },
+        "data": { "type": "object" }
+      },
+      "additionalProperties": true
+    },
+    "reactFlowViewport": {
+      "type": "object",
+      "required": ["x", "y", "zoom"],
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "zoom": { "type": "number", "exclusiveMinimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "reactFlowLayout": {
+      "type": "object",
+      "properties": {
+        "nodes": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/reactFlowNodeLayout" }
+        },
+        "edges": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/reactFlowEdgeLayout" }
+        },
+        "viewport": { "$ref": "#/$defs/reactFlowViewport" }
+      },
+      "additionalProperties": true
+    },
+    "graphLayout": {
+      "type": "object",
+      "properties": {
+        "react_flow": { "$ref": "#/$defs/reactFlowLayout" },
+        "metadata": { "type": "object" }
       },
       "additionalProperties": true
     },

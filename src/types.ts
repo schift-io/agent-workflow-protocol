@@ -529,11 +529,50 @@ export interface AwpGraphExecutionSpec {
   aggregate_policy?: "all_settled" | "fail_fast";
 }
 
+export interface AwpCanvasPosition {
+  x: number;
+  y: number;
+}
+
+export interface AwpReactFlowNodeLayout {
+  position: AwpCanvasPosition;
+  width?: number;
+  height?: number;
+  source_handles?: string[];
+  target_handles?: string[];
+  data?: Record<string, unknown>;
+}
+
+export interface AwpReactFlowEdgeLayout {
+  source_handle?: string;
+  target_handle?: string;
+  label?: string;
+  data?: Record<string, unknown>;
+}
+
+export interface AwpReactFlowViewport {
+  x: number;
+  y: number;
+  zoom: number;
+}
+
+export interface AwpReactFlowLayoutSpec {
+  nodes?: Record<string, AwpReactFlowNodeLayout>;
+  edges?: Record<string, AwpReactFlowEdgeLayout>;
+  viewport?: AwpReactFlowViewport;
+}
+
+export interface AwpGraphLayoutSpec {
+  react_flow?: AwpReactFlowLayoutSpec;
+  metadata?: Record<string, unknown>;
+}
+
 export interface AwpGraphSpec {
   start: string;
   nodes: Record<string, AwpNodeSpec>;
   edges: AwpEdgeSpec[];
   execution?: AwpGraphExecutionSpec;
+  layout?: AwpGraphLayoutSpec;
 }
 
 export interface AwpTemplate {

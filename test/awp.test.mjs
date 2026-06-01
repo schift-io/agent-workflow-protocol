@@ -68,6 +68,19 @@ test("accepts chat_trigger as a workflow start node", () => {
     },
     graph: {
       start: "chat",
+      layout: {
+        react_flow: {
+          nodes: {
+            chat: { position: { x: 80, y: 160 }, source_handles: ["message"] },
+            answer: { position: { x: 380, y: 160 }, target_handles: ["input"] },
+            done: { position: { x: 680, y: 160 } },
+          },
+          edges: {
+            "chat-answer": { source_handle: "message", target_handle: "input" },
+          },
+          viewport: { x: 0, y: 0, zoom: 1 },
+        },
+      },
       nodes: {
         chat: {
           type: "chat_trigger",
@@ -89,6 +102,8 @@ test("accepts chat_trigger as a workflow start node", () => {
 
   const validation = validateAwpTemplate(template);
   assert.equal(validation.valid, true, JSON.stringify(validation.diagnostics));
+  assert.equal(template.graph.layout.react_flow.nodes.chat.position.x, 80);
+  assert.equal(template.graph.layout.react_flow.viewport.zoom, 1);
 
   const plan = createAwpExecutionPlan(template);
   assert.deepEqual(plan.stages.map((stage) => stage.node_ids), [
@@ -532,6 +547,39 @@ test("rejects invalid contract shapes before runtime", () => {
   assert.ok(result.diagnostics.some((diagnostic) => diagnostic.path === "quality_contract.retry_policy.normal_attempts"));
   assert.ok(result.diagnostics.some((diagnostic) => diagnostic.path === "output_contract.required_fields.0"));
   assert.ok(result.diagnostics.some((diagnostic) => diagnostic.path === "output_contract.blocking_rules.0.message"));
+});
+
+test("rejects React Flow layout for unknown nodes", () => {
+  const template = {
+    schema: AWP_SCHEMA,
+    version: AWP_VERSION,
+    id: "invalid-layout",
+    name: "Invalid Layout",
+    agents: {
+      answer: { role: "answerer" },
+    },
+    graph: {
+      start: "chat",
+      layout: {
+        react_flow: {
+          nodes: {
+            missing: { position: { x: 10, y: 20 } },
+          },
+          viewport: { x: 0, y: 0, zoom: 0 },
+        },
+      },
+      nodes: {
+        chat: { type: "chat_trigger" },
+        answer: { type: "agent", ref: "answer" },
+      },
+      edges: [{ from: "chat", to: "answer" }],
+    },
+  };
+
+  const result = validateAwpTemplate(template);
+  assert.equal(result.valid, false);
+  assert.ok(result.diagnostics.some((diagnostic) => diagnostic.path === "graph.layout.react_flow.nodes.missing"));
+  assert.ok(result.diagnostics.some((diagnostic) => diagnostic.path === "graph.layout.react_flow.viewport.zoom"));
 });
 
 test("rejects policy-disabled code conformance example", () => {

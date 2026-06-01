@@ -37,7 +37,8 @@ AWP v0.1 is a draft protocol for YAML-authored agent workflow templates.
   connectors, `data_source`, `validate`, `guard`, `qc`, routers, joins,
   aggregates, human approvals, subworkflows, or end states. Nodes may declare
   `stage` and `parallel_group` when the author needs explicit stage-barrier
-  execution.
+  execution. Optional `layout` metadata preserves editor projection state
+  without changing runtime semantics.
 - `adapters`: runtime-specific hints. These are optional and must not be needed
   to understand the core graph.
 
@@ -156,6 +157,24 @@ Portable trigger node types:
 - `webhook_source`: start from an inbound HTTP webhook payload.
 - `gmail_trigger`: start from a Gmail event such as an inbound message.
 - `notion_trigger`: start from a Notion event such as a page/database change.
+
+## Editor Layout Contract
+
+AWP graph semantics must remain editor-neutral, but runtimes and Hub imports
+should preserve canvas layout when a user edits a workflow visually. Store
+React Flow projection data under `graph.layout.react_flow` rather than mixing
+positions into runtime node semantics.
+
+`graph.layout.react_flow` may include:
+
+- `nodes.<node_id>.position`: `{ x, y }` canvas coordinates.
+- `nodes.<node_id>.width` / `height`: measured editor dimensions.
+- `nodes.<node_id>.source_handles` / `target_handles`: visible handle ids.
+- `edges.<edge_id>.source_handle` / `target_handle`: React Flow handle ids.
+- `viewport`: `{ x, y, zoom }` for restoring the editor camera.
+
+Layout node ids must reference `graph.nodes`. Layout edge ids should use stable
+edge ids when available, or a stable projection key derived by the editor.
 
 ## Stage and Aggregate Execution
 
