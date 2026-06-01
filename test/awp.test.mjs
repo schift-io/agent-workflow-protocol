@@ -57,6 +57,47 @@ test("round-trips a valid template", () => {
   assert.equal(parseAwpYaml(yaml).id, "smoke");
 });
 
+test("accepts chat_trigger as a workflow start node", () => {
+  const template = {
+    schema: AWP_SCHEMA,
+    version: AWP_VERSION,
+    id: "chat-start",
+    name: "Chat Start",
+    agents: {
+      answer: { role: "answerer" },
+    },
+    graph: {
+      start: "chat",
+      nodes: {
+        chat: {
+          type: "chat_trigger",
+          label: "Chat message",
+          config: {
+            input_field: "message",
+            conversation_id_field: "conversation_id",
+          },
+        },
+        answer: { type: "agent", ref: "answer" },
+        done: { type: "end" },
+      },
+      edges: [
+        { from: "chat", to: "answer" },
+        { from: "answer", to: "done" },
+      ],
+    },
+  };
+
+  const validation = validateAwpTemplate(template);
+  assert.equal(validation.valid, true, JSON.stringify(validation.diagnostics));
+
+  const plan = createAwpExecutionPlan(template);
+  assert.deepEqual(plan.stages.map((stage) => stage.node_ids), [
+    ["chat"],
+    ["answer"],
+    ["done"],
+  ]);
+});
+
 test("exposes supported SDK targets", () => {
   assert.deepEqual(
     SUPPORTED_SDK_TARGETS.map((target) => target.id),

@@ -50,6 +50,12 @@ const GAP_Y = 34;
 const MARGIN = 32;
 
 const NODE_COLORS: Record<AwpNodeSpec["type"], { fill: string; stroke: string; accent: string }> = {
+  chat_trigger: { fill: "#ecfeff", stroke: "#0891b2", accent: "#0e7490" },
+  manual_trigger: { fill: "#ecfeff", stroke: "#0891b2", accent: "#0e7490" },
+  schedule_trigger: { fill: "#ecfeff", stroke: "#0891b2", accent: "#0e7490" },
+  webhook_source: { fill: "#ecfeff", stroke: "#0891b2", accent: "#0e7490" },
+  gmail_trigger: { fill: "#ecfeff", stroke: "#0891b2", accent: "#0e7490" },
+  notion_trigger: { fill: "#ecfeff", stroke: "#0891b2", accent: "#0e7490" },
   agent: { fill: "#eef6ff", stroke: "#2563eb", accent: "#1d4ed8" },
   aggregate: { fill: "#f8fafc", stroke: "#64748b", accent: "#475569" },
   tool: { fill: "#ecfdf5", stroke: "#059669", accent: "#047857" },

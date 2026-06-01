@@ -381,17 +381,27 @@ native:
         required: true
 
 graph:
-  start: triage
+  start: chat
   nodes:
+    chat:
+      type: chat_trigger
+      label: Chat message
     triage:
       type: agent
       ref: triage
     done:
       type: end
   edges:
+    - from: chat
+      to: triage
     - from: triage
       to: done
 ```
+
+Trigger nodes such as `chat_trigger`, `manual_trigger`, `schedule_trigger`,
+`webhook_source`, `gmail_trigger`, and `notion_trigger` represent how the run
+begins. Retrieval, approval, transformation, and side effects belong in
+downstream nodes after the trigger produces normalized input.
 
 See [examples/research-router.awp.yaml](./examples/research-router.awp.yaml) for
 a fuller graph with parallel specialist branches and audit checkpoints.

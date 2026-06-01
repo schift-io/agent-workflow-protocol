@@ -485,6 +485,12 @@ export interface AwpToolCallRecord {
 }
 
 export type AwpNodeType =
+  | "chat_trigger"
+  | "manual_trigger"
+  | "schedule_trigger"
+  | "webhook_source"
+  | "gmail_trigger"
+  | "notion_trigger"
   | "agent"
   | "aggregate"
   | "tool"

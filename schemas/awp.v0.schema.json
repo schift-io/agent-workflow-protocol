@@ -486,7 +486,7 @@
       "required": ["type"],
       "properties": {
         "type": {
-          "enum": ["agent", "aggregate", "tool", "connector", "code", "data_source", "validate", "guard", "qc", "router", "join", "state", "human_approval", "subworkflow", "end"]
+          "enum": ["chat_trigger", "manual_trigger", "schedule_trigger", "webhook_source", "gmail_trigger", "notion_trigger", "agent", "aggregate", "tool", "connector", "code", "data_source", "validate", "guard", "qc", "router", "join", "state", "human_approval", "subworkflow", "end"]
         },
         "ref": { "type": "string" },
         "label": { "type": "string" },

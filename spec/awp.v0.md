@@ -33,10 +33,11 @@ AWP v0.1 is a draft protocol for YAML-authored agent workflow templates.
 - `native`: token counter, logging, trace, and audit requirements.
 - `tool_calling`: model-level tool-choice, parallelism, result-correlation, and
   tool-result completeness policy.
-- `graph`: nodes and edges. Nodes reference agents, tools, connectors,
-  `data_source`, `validate`, `guard`, `qc`, routers, joins, aggregates, human
-  approvals, subworkflows, or end states. Nodes may declare `stage` and
-  `parallel_group` when the author needs explicit stage-barrier execution.
+- `graph`: nodes and edges. Nodes reference trigger inputs, agents, tools,
+  connectors, `data_source`, `validate`, `guard`, `qc`, routers, joins,
+  aggregates, human approvals, subworkflows, or end states. Nodes may declare
+  `stage` and `parallel_group` when the author needs explicit stage-barrier
+  execution.
 - `adapters`: runtime-specific hints. These are optional and must not be needed
   to understand the core graph.
 
@@ -138,6 +139,23 @@ Portable gate node types:
 - `qc`: evaluate intermediate or final artifacts against `quality_contract`.
 - `join` / `aggregate`: collect fan-in results after a stage barrier and emit a
   deterministic aggregate artifact.
+
+## Trigger Node Contract
+
+Trigger nodes represent how a workflow run begins. They are input events, not
+retrieval, approval, or transformation steps. A workflow may start from a chat
+message, an operator action, an external webhook, a schedule, or a connector
+event. Downstream nodes should perform retrieval, classification, approval, and
+external side effects after the trigger has produced normalized input.
+
+Portable trigger node types:
+
+- `chat_trigger`: start when a user sends a chat message to the Agent.
+- `manual_trigger`: start from an operator test or manual run.
+- `schedule_trigger`: start from a recurring schedule.
+- `webhook_source`: start from an inbound HTTP webhook payload.
+- `gmail_trigger`: start from a Gmail event such as an inbound message.
+- `notion_trigger`: start from a Notion event such as a page/database change.
 
 ## Stage and Aggregate Execution
 
