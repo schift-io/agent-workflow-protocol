@@ -1,0 +1,393 @@
+schema: agent-workflow-protocol
+version: "0.1"
+id: submission-writer
+name: Korean submission writer
+description: Government proposal and business-plan writing workflow that encodes the Room821 submission-writer skill as portable AWP agents, retrieval, QC, and output gates.
+
+inputs:
+  request:
+    type: string
+    required: true
+    description: User request, target program, and writing task.
+  form_template:
+    type: object
+    required: false
+    description: Parsed application or proposal form hierarchy.
+  source_namespace:
+    type: string
+    required: false
+    default: room821-proposals
+    description: Schift memory/source namespace for company data, prior proposals, notices, and evidence.
+
+outputs:
+  submission_artifact:
+    type: object
+    required: true
+  qc_summary:
+    type: object
+    required: true
+
+state:
+  normalized_request: object
+  form_hierarchy: object
+  evidence_map: object
+  draft_sections: object
+  reviewed_submission: object
+  qc_summary: object
+
+data_sources:
+  proposal_memory:
+    kind: connector
+    description: Schift source memory containing company facts, prior proposal sections, form templates, notices, OCR output, and supporting evidence.
+    schema_format: json_schema
+    input_schema:
+      type: object
+      required: [query, namespace, top_k]
+      properties:
+        query:
+          type: string
+        namespace:
+          type: string
+        top_k:
+          type: integer
+    return_schema:
+      type: object
+      required: [hits]
+      properties:
+        hits:
+          type: array
+          items:
+            type: object
+            required: [source_id, title, content]
+            properties:
+              source_id:
+                type: string
+              title:
+                type: string
+              content:
+                type: string
+              metadata:
+                type: object
+    maps_to: [evidence_map]
+
+input_mapping_contract:
+  raw_fields:
+    request:
+      type: string
+      required: true
+    form_template:
+      type: object
+      required: false
+    source_namespace:
+      type: string
+      required: false
+  intent_resolution:
+    task_kinds:
+      - business_plan
+      - application_form
+      - cooperation_plan
+      - proposal
+      - investment_summary
+    source_modes:
+      - schift_memory
+      - uploaded_form
+      - user_supplied_context
+    missing_inputs:
+      - program_name
+      - form_hierarchy
+      - source_namespace
+  defaults:
+    source_namespace: room821-proposals
+    style: korean_government_submission
+    max_heading_depth: 2
+  blocking_rules:
+    - code: missing_request
+      message: Writing request is required.
+      field: request
+    - code: missing_form_or_hierarchy
+      message: A form hierarchy, parsed OCR template, or explicit section list is required before final export.
+      field: form_template
+  normalized_output:
+    normalized_input:
+      request:
+        type: string
+        required: true
+      form_hierarchy:
+        type: object
+        required: true
+      source_namespace:
+        type: string
+        required: true
+      style:
+        type: string
+        required: true
+    route_decision:
+      awp_id: submission-writer
+      entry_node: map_input
+      reason: Normalize the user request, form hierarchy, and source namespace before retrieval and drafting.
+    validation:
+      blocking_issue_codes:
+        - missing_request
+        - missing_form_or_hierarchy
+      assumptions:
+        - Use the submitted form hierarchy exactly; do not invent extra section levels.
+      user_facing_prompt_fields:
+        - program_name
+        - missing_required_sections
+
+quality_contract:
+  mode: blocking
+  targets:
+    - artifact: draft_sections
+      checks:
+        - form_hierarchy_coverage
+        - evidence_grounding
+        - no_meta_reporting
+        - two_level_bullets
+    - artifact: reviewed_submission
+      checks:
+        - forbidden_style_tokens_absent
+        - no_ai_slop
+        - numeric_or_named_evidence
+        - output_contract_complete
+  required_evidence:
+    - source_hits
+    - form_section_map
+    - forbidden_token_scan
+    - unresolved_fact_list
+  retry_policy:
+    normal_attempts: 2
+    agentic_extra_attempts: 1
+    retry_input: issues_and_suggestions
+    no_graph_cycle: true
+  result_shape:
+    score_required: true
+    metrics:
+      - form_coverage
+      - evidence_density
+      - style_compliance
+      - unsupported_claim_risk
+    blocking_issue_codes:
+      - missing_form_section
+      - unsupported_number
+      - forbidden_style_token
+      - reporting_tone
+      - heading_depth_exceeded
+    retry_hints_required: true
+
+output_contract:
+  required_fields:
+    - submission_artifact
+    - qc_summary
+  required_metadata:
+    - awp_id
+    - source_namespace
+    - form_version
+    - generated_at
+    - reviewer
+  include_qc_summary: true
+  include_usage: true
+  include_protocol_metadata: true
+  blocking_rules:
+    - code: artifact_missing
+      message: Final submission artifact is required.
+    - code: qc_summary_missing
+      message: QC summary is required before export.
+
+agents:
+  intake:
+    role: proposal-form-intake
+    model:
+      provider: schift
+      name: rtx-pro-6000
+      temperature: 0.1
+    instructions: |
+      Parse the user request and form hierarchy. Preserve the submitted form's section order and wording.
+      Do not add headings that are not present in the form. Mark missing fields as 확인 필요.
+  evidence_mapper:
+    role: proposal-evidence-mapper
+    model:
+      provider: schift
+      name: rtx-pro-6000
+      temperature: 0.1
+    connectors: [proposal_memory]
+    instructions: |
+      Retrieve and map company facts, prior proposal language, source documents, OCR output, and numeric evidence to each required form section.
+      Do not invent numbers. Every metric must have a named source, source id, or 확인 필요 marker.
+  writer:
+    role: submission-writer
+    model:
+      provider: schift
+      name: rtx-pro-6000
+      temperature: 0.2
+    instructions: |
+      Write Korean government-submission content, not a report to the operator.
+      보고하지 말고 제출하라: the output is the reviewed submission itself, not process narration.
+      Core rule: every bullet must contain the evaluated fact, number, named entity, method, or source itself.
+      Use at most two hierarchy levels. Use section headings from the form, then bullets only.
+      Use ❍ for the concise topic line and ― for concrete details.
+      Avoid wall-of-text paragraphs over 120 Korean characters.
+      Prefer tables for comparisons, KPIs, market sizing, budgets, schedules, GTM, and risk response.
+      Forbidden reporting endings and meta bullets include 검증함, 확보함, 제시함, 분리함, 구성함, 설계함, 추진함, 운영함, 마련함.
+      Forbidden slop words include 혁신적, 압도적, 독보적, 최첨단, 완벽한, 극대화, 뿐만 아니라, 단순한, 사활, 총력.
+      합니다 and 입니다 are not allowed in final submission prose.
+      If a fact is not proven by memory or user input, write 확인 필요 instead of filling it in.
+  reviewer:
+    role: submission-qc-reviewer
+    model:
+      provider: schift
+      name: rtx-pro-6000
+      temperature: 0
+    instructions: |
+      Review the draft against the submission-writer skill.
+      Block export when the draft contains reporting-tone bullets, forbidden slop, unsupported numbers, heading depth over two levels, or missing form sections.
+      Return a QC summary with blocking issue codes, offending snippets, and retry hints.
+
+connectors:
+  proposal_memory:
+    kind: schift.source
+    source: "{{inputs.source_namespace}}"
+    mode: read
+    scopes: [search, retrieve]
+
+graph:
+  start: map_input
+  execution:
+    max_concurrency: 2
+    stage_policy: explicit
+    aggregate_policy: all_settled
+  nodes:
+    map_input:
+      type: validate
+      label: Normalize request and form hierarchy
+      stage: 0
+      config:
+        contract: input_mapping_contract
+    retrieve_evidence:
+      type: data_source
+      label: Retrieve proposal memory
+      stage: 1
+      ref: proposal_memory
+      config:
+        query: "{{inputs.request}}"
+        namespace: "{{inputs.source_namespace}}"
+        top_k: 18
+    intake:
+      type: agent
+      label: Parse form requirements
+      stage: 1
+      parallel_group: intake_and_evidence
+      ref: intake
+    map_evidence:
+      type: agent
+      label: Map evidence to sections
+      stage: 2
+      ref: evidence_mapper
+    write_submission:
+      type: agent
+      label: Draft submission artifact
+      stage: 3
+      ref: writer
+      config:
+        output_artifact: draft_sections
+    review_submission:
+      type: qc
+      label: Submission-writer QC
+      stage: 4
+      ref: reviewer
+      config:
+        contract: quality_contract
+        artifact: reviewed_submission
+    export_artifact:
+      type: validate
+      label: Validate final output contract
+      stage: 5
+      config:
+        contract: output_contract
+    done:
+      type: end
+      stage: 6
+  edges:
+    - from: map_input
+      to: retrieve_evidence
+    - from: map_input
+      to: intake
+    - from: retrieve_evidence
+      to: map_evidence
+    - from: intake
+      to: map_evidence
+    - from: map_evidence
+      to: write_submission
+    - from: write_submission
+      to: review_submission
+    - from: review_submission
+      to: export_artifact
+    - from: export_artifact
+      to: done
+
+native:
+  token_counter:
+    required: true
+    fields: [prompt_tokens, completion_tokens, reasoning_tokens, cached_tokens, total_tokens]
+  structured_output:
+    required: true
+    mode: json_schema
+    schema:
+      type: object
+      required: [submission_artifact, qc_summary]
+      properties:
+        submission_artifact:
+          type: object
+        qc_summary:
+          type: object
+  reasoning:
+    capture: provider_summary
+    include_raw_thinking: false
+    summary_required: true
+  audit:
+    checkpoints:
+      - id: evidence_map
+        type: source_grounding
+        required: true
+      - id: style_qc
+        type: quality_gate
+        required: true
+
+adapters:
+  schift:
+    target: workflow_v2
+    status: direct
+  langgraph_js:
+    target: StateGraph
+    status: direct
+  vercel_ai_sdk:
+    target: streamText
+    status: requires_runtime
+    runtime: schift
+  google_genai:
+    target: models.generateContent
+    status: requires_runtime
+    runtime: schift
+
+metadata:
+  source_skill:
+    name: submission-writer
+    origin: /Users/jskang/.codex/skills/submission-writer/SKILL.md
+    imported_at: "2026-06-09"
+  forbidden_tokens:
+    - 혁신적
+    - 압도적
+    - 독보적
+    - 최첨단
+    - 완벽한
+    - 극대화
+    - 뿐만 아니라
+    - 합니다
+    - 입니다
+    - 검증함
+    - 확보함
+    - 제시함
+    - 분리함
+    - 구성함
+    - 설계함
+    - 추진함

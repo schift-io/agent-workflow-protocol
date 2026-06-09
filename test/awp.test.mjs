@@ -462,6 +462,7 @@ test("validates public conformance AWP YAML examples", () => {
     "simple-llm.awp.yaml",
     "streaming.awp.yaml",
     "structured-output.awp.yaml",
+    "submission-writer.awp.yaml",
     "subworkflow.awp.yaml",
     "tool-call.awp.yaml",
   ]);
@@ -472,6 +473,45 @@ test("validates public conformance AWP YAML examples", () => {
     assert.equal(result.valid, true, `${file}: ${JSON.stringify(result.diagnostics)}`);
     assert.equal(template.adapters?.schift?.target, "workflow_v2", file);
   }
+});
+
+test("submission-writer conformance template carries the Korean proposal skill gates", () => {
+  const source = readFileSync(
+    new URL("../examples/conformance/submission-writer.awp.yaml", import.meta.url),
+    "utf8",
+  );
+  const template = parseAwpYaml(source);
+  const result = validateAwpTemplate(template);
+
+  assert.equal(result.valid, true, JSON.stringify(result.diagnostics));
+  assert.equal(template.id, "submission-writer");
+  assert.equal(template.agents.writer.role, "submission-writer");
+  assert.match(template.agents.writer.instructions, /보고하지 말고/);
+  assert.match(template.agents.writer.instructions, /합니다 and 입니다 are not allowed/);
+  assert.deepEqual(template.quality_contract.result_shape.blocking_issue_codes, [
+    "missing_form_section",
+    "unsupported_number",
+    "forbidden_style_token",
+    "reporting_tone",
+    "heading_depth_exceeded",
+  ]);
+  assert.equal(template.connectors.proposal_memory.kind, "schift.source");
+  assert.equal(template.graph.execution.max_concurrency, 2);
+
+  const plan = createAwpExecutionPlan(template);
+  assert.deepEqual(plan.stages.map((stage) => stage.node_ids), [
+    ["map_input"],
+    ["retrieve_evidence", "intake"],
+    ["map_evidence"],
+    ["write_submission"],
+    ["review_submission"],
+    ["export_artifact"],
+    ["done"],
+  ]);
+
+  const schift = classifyAwpAdapterProjection(template, "schift");
+  assert.equal(schift.direct, true);
+  assert.equal(schift.target, "workflow_v2");
 });
 
 test("validates input, data source, QC, and output contracts", () => {
