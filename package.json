@@ -76,7 +76,8 @@
     "@schift-io/workflow-google-genai": "^0.1.4",
     "@schift-io/workflow-langgraph": "^0.1.4",
     "@schift-io/workflow-vercel-ai": "^0.1.4",
-    "yaml": "^2.7.0"
+    "yaml": "^2.7.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

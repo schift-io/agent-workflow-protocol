@@ -1,6 +1,7 @@
 import {
   AWP_SCHEMA,
   AWP_VERSION,
+  AwpTemplateSchema,
   type AwpBlockingIssueSpec,
   type AwpDiagnostic,
   type AwpTemplate,
@@ -9,7 +10,20 @@ import {
 } from "./types.js";
 
 export function validateAwpTemplate(template: AwpTemplate): AwpValidationResult {
+  const structural = AwpTemplateSchema.safeParse(template);
+  if (!structural.success) {
+    return {
+      valid: false,
+      diagnostics: structural.error.issues.map((issue) => ({
+        level: "error" as const,
+        path: issue.path.join("."),
+        message: issue.message,
+      })),
+    };
+  }
+
   const diagnostics: AwpDiagnostic[] = [];
+  template = structural.data;
 
   if (template.schema !== AWP_SCHEMA) {
     diagnostics.push({
