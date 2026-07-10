@@ -1,0 +1,121 @@
+schema: agent-workflow-protocol
+version: "0.1"
+id: memory-contract
+name: Memory-aware support agent
+description: Consumes CCLG/Schift-memory MCP tools via a declared memory contract; no adapter status is declared so classification is inferred.
+
+memory:
+  requires:
+    scopes: [core, agent]
+    tools: [memory.search, memory.pack, memory.patch]
+  seed:
+    - ref: ./seeds/domain-knowledge.cclg
+      install: import_pending
+  writes:
+    - action: memory.patch
+      approvalRequired: true
+
+agents:
+  answerer:
+    role: support-answerer
+    model:
+      provider: openai
+      name: gpt-4o-mini
+    instructions: Answer support questions using packed memory context; correct memory when the user reports a stale fact.
+    tools: [memory.search, memory.pack, memory.patch]
+
+tools:
+  memory.search:
+    kind: schift.memory.search
+    description: Search active memory (local CCLG or Schift memory_repo) for relevant context.
+    schema_format: json_schema
+    side_effect: read
+    idempotent: true
+    runtime: mcp
+    execution:
+      mode: mcp
+      binding: memory.search
+    input_schema:
+      type: object
+      required: [query]
+      properties:
+        query:
+          type: string
+  memory.pack:
+    kind: schift.memory.pack
+    description: Compile an ActiveMemoryPack for the current task.
+    schema_format: json_schema
+    side_effect: read
+    idempotent: true
+    runtime: mcp
+    execution:
+      mode: mcp
+      binding: memory.pack
+    input_schema:
+      type: object
+      properties:
+        query:
+          type: string
+        max_nodes:
+          type: integer
+  memory.patch:
+    kind: schift.memory.patch
+    description: Apply a memory patch (supersede/retire) — the only way a memory node is corrected.
+    schema_format: json_schema
+    side_effect: write
+    idempotent: false
+    runtime: mcp
+    execution:
+      mode: mcp
+      binding: memory.patch
+    approval:
+      mode: always
+      checkpoint: before_memory_patch
+    input_schema:
+      type: object
+      required: [operation, target_ids, reason]
+      properties:
+        operation:
+          type: string
+        target_ids:
+          type: array
+          items:
+            type: string
+        reason:
+          type: string
+
+native:
+  audit:
+    checkpoints:
+      - id: before_memory_patch
+        type: pre_write
+        required: true
+
+graph:
+  start: answer
+  nodes:
+    answer:
+      type: agent
+      ref: answerer
+    done:
+      type: end
+  edges:
+    - from: answer
+      to: done
+
+adapters:
+  schift:
+    target: workflow_v2
+    status: direct
+  # These three are deliberately mis-declared "direct" to prove that a
+  # memory: contract forces requires_runtime regardless of what a pack author
+  # declares — projection must never silently drop the memory contract.
+  vercel_ai_sdk:
+    target: generateText
+    status: direct
+  google_genai:
+    target: models.generateContent
+    status: direct
+  langgraph_js:
+    target: StateGraph
+    status: direct

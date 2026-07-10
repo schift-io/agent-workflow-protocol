@@ -94,6 +94,7 @@ export function validateAwpTemplate(template: AwpTemplate): AwpValidationResult 
   validateDataSources(template, diagnostics);
   validatePolicies(template, diagnostics);
   validateNative(template, diagnostics);
+  validateMemory(template, diagnostics);
   validateContracts(template, diagnostics);
   validateGraph(template, agentIds, toolIds, connectorIds, dataSourceIds, diagnostics);
 
@@ -492,6 +493,47 @@ function validateNative(template: AwpTemplate, diagnostics: AwpDiagnostic[]): vo
         level: "error",
         path: `native.audit.checkpoints.${index}.type`,
         message: "Audit checkpoint type is required",
+      });
+    }
+  }
+}
+
+function validateMemory(template: AwpTemplate, diagnostics: AwpDiagnostic[]): void {
+  const memory = template.memory;
+  if (!memory) {
+    return;
+  }
+
+  const requiredTools = new Set(memory.requires?.tools ?? []);
+
+  for (const [index, seed] of (memory.seed ?? []).entries()) {
+    // `ref` shape (relative, no URL scheme) is already enforced by
+    // AwpMemorySeedSpecSchema during structural parsing above. Container
+    // checksum and secret-free (auth-free) verification of the referenced
+    // .cclg file require filesystem access this validator does not perform —
+    // that is the installer/runtime's job, not this structural check's.
+    if (!seed.ref.endsWith(".cclg")) {
+      diagnostics.push({
+        level: "error",
+        path: `memory.seed.${index}.ref`,
+        message: "Memory seed ref must point to a .cclg container",
+      });
+    }
+  }
+
+  for (const [index, write] of (memory.writes ?? []).entries()) {
+    if (write.approvalRequired === false) {
+      diagnostics.push({
+        level: "warning",
+        path: `memory.writes.${index}.approvalRequired`,
+        message: "Unapproved memory writes bypass the pending review gate; confirm this is intentional",
+      });
+    }
+    if (requiredTools.size > 0 && !requiredTools.has(write.action)) {
+      diagnostics.push({
+        level: "warning",
+        path: `memory.writes.${index}.action`,
+        message: `Write action '${write.action}' is not declared in memory.requires.tools`,
       });
     }
   }

@@ -44,6 +44,7 @@
     },
     "tool_calling": { "$ref": "#/$defs/toolCalling" },
     "native": { "$ref": "#/$defs/native" },
+    "memory": { "$ref": "#/$defs/memorySpec" },
     "graph": { "$ref": "#/$defs/graph" },
     "adapters": {
       "type": "object",
@@ -467,6 +468,68 @@
             }
           },
           "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "memoryTool": {
+      "enum": [
+        "memory.search",
+        "memory.pack",
+        "memory.add",
+        "memory.patch",
+        "memory.recall",
+        "memory.cite",
+        "memory.conflicts",
+        "memory.resolve"
+      ]
+    },
+    "memorySeed": {
+      "type": "object",
+      "required": ["ref"],
+      "properties": {
+        "ref": {
+          "type": "string",
+          "minLength": 1,
+          "not": { "pattern": "^(/|[a-zA-Z][a-zA-Z0-9+.-]*://)" }
+        },
+        "install": { "enum": ["import_pending"], "default": "import_pending" }
+      },
+      "additionalProperties": true
+    },
+    "memoryWrite": {
+      "type": "object",
+      "required": ["action"],
+      "properties": {
+        "action": { "$ref": "#/$defs/memoryTool" },
+        "approvalRequired": { "type": "boolean", "default": true }
+      },
+      "additionalProperties": true
+    },
+    "memorySpec": {
+      "type": "object",
+      "properties": {
+        "requires": {
+          "type": "object",
+          "properties": {
+            "scopes": {
+              "type": "array",
+              "items": { "enum": ["core", "agent", "session"] }
+            },
+            "tools": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/memoryTool" }
+            }
+          },
+          "additionalProperties": true
+        },
+        "seed": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/memorySeed" }
+        },
+        "writes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/memoryWrite" }
         }
       },
       "additionalProperties": true

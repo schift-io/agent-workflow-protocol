@@ -455,6 +455,7 @@ test("validates public conformance AWP YAML examples", () => {
   assert.deepEqual(files, [
     "approval-write.awp.yaml",
     "contract-gates.awp.yaml",
+    "memory-contract.awp.yaml",
     "multi-step-graph.awp.yaml",
     "outbound-webhook.awp.yaml",
     "parallel-qc-aggregate.awp.yaml",
@@ -620,6 +621,87 @@ test("rejects React Flow layout for unknown nodes", () => {
   assert.equal(result.valid, false);
   assert.ok(result.diagnostics.some((diagnostic) => diagnostic.path === "graph.layout.react_flow.nodes.missing"));
   assert.ok(result.diagnostics.some((diagnostic) => diagnostic.path === "graph.layout.react_flow.viewport.zoom"));
+});
+
+test("parses and validates the memory-contract conformance example", () => {
+  const source = readFileSync(
+    new URL("../examples/conformance/memory-contract.awp.yaml", import.meta.url),
+    "utf8",
+  );
+  const template = parseAwpYaml(source);
+  const result = validateAwpTemplate(template);
+
+  assert.equal(result.valid, true, JSON.stringify(result.diagnostics));
+  assert.deepEqual(template.memory.requires.scopes, ["core", "agent"]);
+  assert.deepEqual(template.memory.requires.tools, ["memory.search", "memory.pack", "memory.patch"]);
+  assert.equal(template.memory.seed[0].ref, "./seeds/domain-knowledge.cclg");
+  assert.equal(template.memory.seed[0].install, "import_pending");
+  assert.equal(template.memory.writes[0].action, "memory.patch");
+  assert.equal(template.memory.writes[0].approvalRequired, true);
+});
+
+test("memory: contract forces requires_runtime on every companion adapter, never schift", () => {
+  const source = readFileSync(
+    new URL("../examples/conformance/memory-contract.awp.yaml", import.meta.url),
+    "utf8",
+  );
+  const template = parseAwpYaml(source);
+
+  for (const adapterId of ["vercel_ai_sdk", "google_genai", "langgraph_js"]) {
+    const classification = classifyAwpAdapterProjection(template, adapterId);
+    assert.equal(classification.status, "requires_runtime", adapterId);
+    assert.equal(classification.requiresRuntime, true, adapterId);
+    assert.equal(classification.direct, false, adapterId);
+  }
+
+  const schift = classifyAwpAdapterProjection(template, "schift");
+  assert.equal(schift.status, "direct");
+  assert.equal(schift.direct, true);
+});
+
+test("memory.seed.ref rejects absolute paths and URL schemes", () => {
+  const base = {
+    schema: AWP_SCHEMA,
+    version: AWP_VERSION,
+    id: "memory-ref-check",
+    name: "Memory ref check",
+    agents: { root: { role: "answerer" } },
+    graph: {
+      start: "root",
+      nodes: { root: { type: "agent", ref: "root" }, done: { type: "end" } },
+      edges: [{ from: "root", to: "done" }],
+    },
+  };
+
+  for (const ref of ["/etc/passwd.cclg", "https://example.com/seed.cclg", "file:///seed.cclg"]) {
+    const template = { ...base, memory: { seed: [{ ref }] } };
+    const result = validateAwpTemplate(template);
+    assert.equal(result.valid, false, ref);
+    assert.ok(
+      result.diagnostics.some((diagnostic) => diagnostic.path === "memory.seed.0.ref"),
+      `${ref}: ${JSON.stringify(result.diagnostics)}`,
+    );
+  }
+});
+
+test("memory.seed.install rejects unknown modes", () => {
+  const template = {
+    schema: AWP_SCHEMA,
+    version: AWP_VERSION,
+    id: "memory-install-check",
+    name: "Memory install check",
+    agents: { root: { role: "answerer" } },
+    memory: { seed: [{ ref: "./seed.cclg", install: "auto_apply" }] },
+    graph: {
+      start: "root",
+      nodes: { root: { type: "agent", ref: "root" }, done: { type: "end" } },
+      edges: [{ from: "root", to: "done" }],
+    },
+  };
+
+  const result = validateAwpTemplate(template);
+  assert.equal(result.valid, false);
+  assert.ok(result.diagnostics.some((diagnostic) => diagnostic.path === "memory.seed.0.install"));
 });
 
 test("rejects policy-disabled code conformance example", () => {

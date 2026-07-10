@@ -739,6 +739,72 @@ export const AwpGraphSpecSchema = z.object({
 });
 export type AwpGraphSpec = z.infer<typeof AwpGraphSpecSchema>;
 
+// --- memory (AWP v0.2 proposal, additive to v0.1) ---
+// Consumption contract for CCLG/Schift-memory MCP `memory.*` tools, per
+// docs/plans/2026-07-10-cclg-schift-memory-coexistence.md S4. The block only
+// declares intent (scopes/tools/seed refs/write approvals); the runtime binds
+// it to a local (~/.cclg) or cloud (memory_repo) store. Schema/parser/roundtrip
+// only validate shape here — container checksum and secret-free (auth-free)
+// verification of a seed `.cclg` file happens at install/runtime, not here,
+// because that requires filesystem access this package does not perform.
+
+export const AwpMemoryScopeSchema = z.enum(["core", "agent", "session"]);
+export type AwpMemoryScope = z.infer<typeof AwpMemoryScopeSchema>;
+
+export const AwpMemoryToolSchema = z.enum([
+  "memory.search",
+  "memory.pack",
+  "memory.add",
+  "memory.patch",
+  "memory.recall",
+  "memory.cite",
+  "memory.conflicts",
+  "memory.resolve",
+]);
+export type AwpMemoryTool = z.infer<typeof AwpMemoryToolSchema>;
+
+export const AwpMemoryRequiresSpecSchema = z.object({
+  scopes: z.array(AwpMemoryScopeSchema).optional(),
+  tools: z.array(AwpMemoryToolSchema).optional(),
+});
+export type AwpMemoryRequiresSpec = z.infer<typeof AwpMemoryRequiresSpecSchema>;
+
+export const AwpMemorySeedInstallModeSchema = z.enum(["import_pending"]);
+export type AwpMemorySeedInstallMode = z.infer<typeof AwpMemorySeedInstallModeSchema>;
+
+const MEMORY_SEED_REF_URL_SCHEME = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//;
+
+export const AwpMemorySeedSpecSchema = z.object({
+  // Package-relative path to a bundled `.cclg` seed container only. Absolute
+  // paths and URL schemes are rejected so a pack can never point outside its
+  // own bundle at parse time.
+  ref: z
+    .string()
+    .min(1)
+    .refine(
+      (value) => !value.startsWith("/") && !MEMORY_SEED_REF_URL_SCHEME.test(value),
+      {
+        message:
+          "memory.seed.ref must be a package-relative path (no absolute paths or URL schemes)",
+      },
+    ),
+  install: AwpMemorySeedInstallModeSchema.optional().default("import_pending"),
+});
+export type AwpMemorySeedSpec = z.infer<typeof AwpMemorySeedSpecSchema>;
+
+export const AwpMemoryWriteSpecSchema = z.object({
+  action: AwpMemoryToolSchema,
+  approvalRequired: z.boolean().optional().default(true),
+});
+export type AwpMemoryWriteSpec = z.infer<typeof AwpMemoryWriteSpecSchema>;
+
+export const AwpMemorySpecSchema = z.object({
+  requires: AwpMemoryRequiresSpecSchema.optional(),
+  seed: z.array(AwpMemorySeedSpecSchema).optional(),
+  writes: z.array(AwpMemoryWriteSpecSchema).optional(),
+});
+export type AwpMemorySpec = z.infer<typeof AwpMemorySpecSchema>;
+
 export const AwpAdapterProjectionStatusSchema = z.enum([
   "direct",
   "requires_runtime",
@@ -783,6 +849,7 @@ export const AwpTemplateSchema = z.object({
     })
     .optional(),
   native: AwpNativeSpecSchema.optional(),
+  memory: AwpMemorySpecSchema.optional(),
   graph: AwpGraphSpecSchema,
   adapters: z.record(AwpAdapterSpecSchema).optional(),
   metadata: z.record(z.unknown()).optional(),

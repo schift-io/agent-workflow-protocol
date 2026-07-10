@@ -68,6 +68,27 @@ export function classifyAwpAdapterProjection(
   adapter: string,
 ): AwpAdapterClassification {
   const adapterId = normalizeAwpAdapterId(adapter);
+
+  // Fail-closed §2.5: no SDK companion adapter can express a `memory:`
+  // contract (scopes/tools/seed/writes), so its presence forces
+  // requires_runtime for every non-native target — even one a pack author
+  // (wrongly) declared "direct". Silently dropping the memory contract during
+  // projection would be a security downgrade, not a compatibility detail.
+  // `schift` is excluded because it is the native runtime that binds the
+  // MCP memory.* tool surface itself.
+  if (template.memory && adapterId !== "schift") {
+    return classification({
+      adapter: adapterId,
+      source: "inferred",
+      status: "requires_runtime",
+      target: DEFAULT_TARGETS[adapterId],
+      runtime: "schift",
+      notes: [
+        "Template declares a memory: contract; no SDK adapter can express memory scope/tool bindings, so projection requires a runtime hosting the MCP memory.* tool surface.",
+      ],
+    });
+  }
+
   const declared = template.adapters?.[adapterId];
   if (declared?.status) {
     return classification({
