@@ -64,6 +64,13 @@ export const AwpToolChoiceSpecSchema = z.object({
 });
 export type AwpToolChoiceSpec = z.infer<typeof AwpToolChoiceSpecSchema>;
 
+export const AwpStructuredOutputSpecSchema = z.object({
+  required: z.boolean().optional(),
+  mode: z.enum(["json_schema", "tool_result", "adapter"]).optional(),
+  schema: z.record(z.unknown()).optional(),
+});
+export type AwpStructuredOutputSpec = z.infer<typeof AwpStructuredOutputSpecSchema>;
+
 export const AwpAgentSpecSchema = z.object({
   role: z.string(),
   model: AwpModelRefSchema.optional(),
@@ -74,6 +81,7 @@ export const AwpAgentSpecSchema = z.object({
   max_steps: z.number().optional(),
   tool_choice: AwpToolChoiceSpecSchema.optional(),
   tool_parallelism: AwpToolParallelismSpecSchema.optional(),
+  structured_output: AwpStructuredOutputSpecSchema.optional(),
   metadata: z.record(z.unknown()).optional(),
 });
 export type AwpAgentSpec = z.infer<typeof AwpAgentSpecSchema>;
@@ -429,13 +437,7 @@ export const AwpNativeSpecSchema = z.object({
       snapshot_interval_ms: z.number().optional(),
     })
     .optional(),
-  structured_output: z
-    .object({
-      required: z.boolean().optional(),
-      mode: z.enum(["json_schema", "tool_result", "adapter"]).optional(),
-      schema: z.record(z.unknown()).optional(),
-    })
-    .optional(),
+  structured_output: AwpStructuredOutputSpecSchema.optional(),
   reasoning: z
     .object({
       capture: z
@@ -588,6 +590,7 @@ export const AwpRunArtifactSchema = z.object({
     "tool_result",
     "audit_decision",
     "state_snapshot",
+    "model_request",
     "structured_output",
     "reasoning_summary",
     "stream_snapshot",

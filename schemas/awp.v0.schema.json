@@ -95,7 +95,17 @@
         "max_steps": { "type": "integer" },
         "tool_choice": { "$ref": "#/$defs/toolChoice" },
         "tool_parallelism": { "$ref": "#/$defs/toolParallelism" },
+        "structured_output": { "$ref": "#/$defs/structuredOutput" },
         "metadata": { "type": "object" }
+      },
+      "additionalProperties": true
+    },
+    "structuredOutput": {
+      "type": "object",
+      "properties": {
+        "required": { "type": "boolean" },
+        "mode": { "enum": ["json_schema", "tool_result", "adapter"] },
+        "schema": { "type": "object" }
       },
       "additionalProperties": true
     },
@@ -432,15 +442,7 @@
           },
           "additionalProperties": true
         },
-        "structured_output": {
-          "type": "object",
-          "properties": {
-            "required": { "type": "boolean" },
-            "mode": { "enum": ["json_schema", "tool_result", "adapter"] },
-            "schema": { "type": "object" }
-          },
-          "additionalProperties": true
-        },
+        "structured_output": { "$ref": "#/$defs/structuredOutput" },
         "reasoning": {
           "type": "object",
           "properties": {

@@ -119,6 +119,17 @@ export type {
 } from "./render.js";
 
 export {
+  openAIResponseFormatFromStructuredOutput,
+  resolveStructuredOutputSpec,
+} from "./structured-output.js";
+
+export type {
+  AwpStructuredOutputSpec,
+  OpenAIResponseFormat,
+  ResponseFormatOptions,
+} from "./structured-output.js";
+
+export {
   AWP_COMPANION_ADAPTER_IDS,
   classifyAwpAdapterProjection,
   classifyAwpAdapters,

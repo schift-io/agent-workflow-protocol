@@ -152,6 +152,52 @@ comparable evidence. AWP does not require or permit storing hidden raw
 chain-of-thought; adapters log reasoning summaries, token metadata, or redacted
 traces only when the provider or host runtime exposes them.
 
+### Structured Output Shapes The Model Request
+
+`structured_output` is a declaration, not just evidence. When a spec sets
+`mode: json_schema` with a concrete `schema`, the runtime translates it into an
+OpenAI-compatible `response_format` and carries it on the outgoing model request
+(surfaced on the `model.started` and `model.structured_output` events and in the
+`model_request` artifact), so OpenAI-compatible providers/routers actually
+enforce the schema instead of only being prompted for it.
+
+It can be declared at three levels, resolved with **block > agent > workflow**
+precedence:
+
+```yaml
+# workflow-level default
+native:
+  structured_output:
+    required: true
+    mode: json_schema
+    schema: { type: object, properties: { verdict: { type: string } }, required: [verdict] }
+
+agents:
+  grader:
+    role: grader
+    # per-agent override
+    structured_output:
+      mode: json_schema
+      schema: { type: object, properties: { score: { type: number } } }
+
+graph:
+  nodes:
+    grade:
+      type: agent
+      ref: grader
+      config:
+        # per-llm_generate-block override (highest precedence)
+        structured_output:
+          mode: json_schema
+          schema: { type: object, properties: { label: { type: string } } }
+```
+
+`mode: tool_result` / `mode: adapter` and schema-less specs do **not** emit a
+`response_format` — they are enforced by other means. Adapters and live
+executors can build the same payload directly with the exported
+`openAIResponseFormatFromStructuredOutput()` / `resolveStructuredOutputSpec()`
+helpers.
+
 ### Contracts Stay Portable
 
 AWP can declare `input_mapping_contract`, `data_sources`, `quality_contract`, and

@@ -11,6 +11,8 @@ import {
   SUPPORTED_SDK_TARGETS,
   classifyAwpAdapterProjection,
   createAwpExecutionPlan,
+  openAIResponseFormatFromStructuredOutput,
+  resolveStructuredOutputSpec,
   parseAwpYaml,
   renderAwpGraph,
   runAwpReference,
@@ -723,4 +725,90 @@ test("CLI prints help for global and command help flags", () => {
   assert.match(globalHelp, /awp render/);
   assert.match(commandHelp, /Usage:/);
   assert.match(commandHelp, /awp run/);
+});
+
+test("openAIResponseFormatFromStructuredOutput maps json_schema specs and ignores others", () => {
+  const schema = { type: "object", properties: { answer: { type: "string" } }, required: ["answer"] };
+  const rf = openAIResponseFormatFromStructuredOutput({ mode: "json_schema", schema }, { name: "grader", strict: true });
+  assert.deepEqual(rf, {
+    type: "json_schema",
+    json_schema: { name: "grader", strict: true, schema },
+  });
+
+  // non-json_schema modes and schema-less specs are enforced by other means
+  assert.equal(openAIResponseFormatFromStructuredOutput({ mode: "tool_result", schema }), undefined);
+  assert.equal(openAIResponseFormatFromStructuredOutput({ mode: "adapter", schema }), undefined);
+  assert.equal(openAIResponseFormatFromStructuredOutput({ mode: "json_schema" }), undefined);
+  assert.equal(openAIResponseFormatFromStructuredOutput(undefined), undefined);
+});
+
+test("resolveStructuredOutputSpec honors block > agent > workflow precedence", () => {
+  const block = { mode: "json_schema", schema: { type: "object" } };
+  const agent = { mode: "adapter" };
+  const workflow = { required: true };
+  assert.equal(resolveStructuredOutputSpec(block, agent, workflow), block);
+  assert.equal(resolveStructuredOutputSpec(undefined, agent, workflow), agent);
+  assert.equal(resolveStructuredOutputSpec(undefined, undefined, workflow), workflow);
+  assert.equal(resolveStructuredOutputSpec(undefined, undefined, undefined), undefined);
+});
+
+test("llm_generate forwards json_schema structured_output as response_format", () => {
+  const source = readFileSync(new URL("../examples/research-router.awp.yaml", import.meta.url), "utf8");
+  const template = parseAwpYaml(source);
+  const schema = { type: "object", properties: { verdict: { type: "string" } }, required: ["verdict"] };
+  template.native = { ...template.native, structured_output: { required: true, mode: "json_schema", schema } };
+
+  const result = runAwpReference(template, {
+    runId: "awp_run_rf",
+    input: { query: "structured?" },
+    now: () => new Date("2026-05-09T00:00:00.000Z"),
+  });
+
+  const modelStarted = result.events.find(
+    (event) => event.type === "model.started" && event.payload?.response_format,
+  );
+  assert.ok(modelStarted, "model.started should carry response_format");
+  assert.equal(modelStarted.payload.response_format.type, "json_schema");
+  assert.deepEqual(modelStarted.payload.response_format.json_schema.schema, schema);
+  assert.equal(modelStarted.payload.response_format.json_schema.strict, true);
+
+  const modelRequest = result.artifacts.find((artifact) => artifact.kind === "model_request");
+  assert.ok(modelRequest, "a model_request artifact should be created");
+  assert.deepEqual(modelRequest.payload.response_format.json_schema.schema, schema);
+
+  assert.ok(
+    result.events.some(
+      (event) => event.type === "model.structured_output" && event.payload?.schema_mode === "json_schema",
+    ),
+  );
+});
+
+test("llm_generate block config structured_output overrides workflow default", () => {
+  const source = readFileSync(new URL("../examples/research-router.awp.yaml", import.meta.url), "utf8");
+  const template = parseAwpYaml(source);
+  const schema = { type: "object", properties: { label: { type: "string" } } };
+  // attach block-level structured_output to the first agent node
+  const agentNodeId = Object.keys(template.graph.nodes).find(
+    (id) => template.graph.nodes[id].type === "agent",
+  );
+  assert.ok(agentNodeId, "expected an agent node");
+  template.graph.nodes[agentNodeId].config = {
+    ...(template.graph.nodes[agentNodeId].config ?? {}),
+    structured_output: { mode: "json_schema", schema },
+  };
+
+  const result = runAwpReference(template, {
+    runId: "awp_run_block_rf",
+    input: { query: "block override?" },
+    now: () => new Date("2026-05-09T00:00:00.000Z"),
+  });
+
+  const modelStarted = result.events.find(
+    (event) =>
+      event.type === "model.started" &&
+      event.node_id === agentNodeId &&
+      event.payload?.response_format,
+  );
+  assert.ok(modelStarted, "block-level structured_output should produce response_format");
+  assert.deepEqual(modelStarted.payload.response_format.json_schema.schema, schema);
 });

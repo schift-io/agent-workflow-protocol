@@ -13,6 +13,11 @@ import type {
   AwpToolCallRecord,
 } from "./types.js";
 import { validateAwpTemplate } from "./validate.js";
+import type { AwpStructuredOutputSpec } from "./schemas.js";
+import {
+  openAIResponseFormatFromStructuredOutput,
+  resolveStructuredOutputSpec,
+} from "./structured-output.js";
 
 export interface RunAwpReferenceOptions {
   input?: Record<string, unknown>;
@@ -291,7 +296,7 @@ function executeNode(state: RuntimeState, nodeId: string, stage: AwpExecutionSta
 
   switch (node.type) {
     case "agent":
-      executeAgentNode(state, nodeId, stepId, node.ref);
+      executeAgentNode(state, nodeId, stepId, node.ref, node);
       break;
     case "tool":
       executeToolNode(state, nodeId, stepId, node.ref);
@@ -332,15 +337,62 @@ function executeNode(state: RuntimeState, nodeId: string, stage: AwpExecutionSta
   }, nodeId, stepId, undefined, undefined, undefined, stepDurationMs);
 }
 
+/**
+ * Loosely coerce an `llm_generate` block's `config.structured_output` (typed as
+ * `unknown` on the node config bag) into the structured-output spec shape.
+ * Unknown/foreign values are ignored so block config never crashes a run.
+ */
+function coerceStructuredOutputSpec(value: unknown): AwpStructuredOutputSpec | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return undefined;
+  }
+  const record = value as Record<string, unknown>;
+  const spec: AwpStructuredOutputSpec = {};
+  if (typeof record.required === "boolean") spec.required = record.required;
+  if (record.mode === "json_schema" || record.mode === "tool_result" || record.mode === "adapter") {
+    spec.mode = record.mode;
+  }
+  if (typeof record.schema === "object" && record.schema !== null && !Array.isArray(record.schema)) {
+    spec.schema = record.schema as Record<string, unknown>;
+  }
+  return spec.mode === undefined && spec.schema === undefined && spec.required === undefined
+    ? undefined
+    : spec;
+}
+
 function executeAgentNode(
   state: RuntimeState,
   nodeId: string,
   stepId: string,
   agentId: string | undefined,
+  node?: AwpNodeSpec,
 ): void {
   const agent = agentId ? state.template.agents[agentId] : undefined;
   const modelStartedAtMs = state.now().getTime();
   const model = agent?.model;
+
+  // Resolve structured-output intent with block > agent > workflow precedence,
+  // then translate a `json_schema` spec into an OpenAI-compatible
+  // `response_format` so the declaration shapes the outgoing model request
+  // rather than only recording intent.
+  const blockStructuredOutput = coerceStructuredOutputSpec(
+    (node?.config as Record<string, unknown> | undefined)?.structured_output,
+  );
+  const structuredOutputSpec = resolveStructuredOutputSpec(
+    blockStructuredOutput,
+    agent?.structured_output,
+    state.template.native?.structured_output,
+  );
+  const responseFormat = openAIResponseFormatFromStructuredOutput(structuredOutputSpec, {
+    name: agentId ?? nodeId,
+  });
+
+  const modelRequest = {
+    model: model ?? null,
+    temperature: model?.temperature,
+    max_output_tokens: model?.max_output_tokens,
+    ...(responseFormat ? { response_format: responseFormat } : {}),
+  };
 
   emit(state, "model.started", {
     agent_id: agentId,
@@ -351,7 +403,10 @@ function executeAgentNode(
     model_name: model?.name,
     temperature: model?.temperature,
     max_output_tokens: model?.max_output_tokens,
+    ...(responseFormat ? { response_format: responseFormat } : {}),
   }, nodeId, stepId);
+
+  createArtifact(state, "model_request", `${nodeId}.model_request`, modelRequest, nodeId, stepId);
 
   const toolCalls: AwpToolCallRecord[] = [];
   for (const toolName of agent?.tools ?? []) {
@@ -411,8 +466,9 @@ function executeAgentNode(
     artifact_id: structuredArtifact.artifact_id,
     output_type: structuredOutput.type,
     output_keys: Object.keys(structuredOutput),
-    schema_mode: state.template.native?.structured_output?.mode ?? "adapter",
-    required: state.template.native?.structured_output?.required ?? false,
+    schema_mode: structuredOutputSpec?.mode ?? "adapter",
+    required: structuredOutputSpec?.required ?? false,
+    ...(responseFormat ? { response_format: responseFormat } : {}),
   }, nodeId, stepId, undefined, structuredArtifact.artifact_id);
 
   const result = {

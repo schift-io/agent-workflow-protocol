@@ -1,6 +1,6 @@
 {
   "name": "@schift-io/agent-workflow-protocol",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "description": "AWP: a YAML-first protocol for portable agent workflows.",
   "type": "module",
   "main": "./dist/index.js",
